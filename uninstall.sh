@@ -15,6 +15,8 @@ else
   TARGET_HOME="$HOME"
 fi
 
+USER_APP_DEST="$TARGET_HOME/Applications/$APP_NAME.app"
+
 for LAUNCH_LABEL in "${LAUNCH_LABELS[@]}"; do
   LAUNCH_AGENT_PATH="$TARGET_HOME/Library/LaunchAgents/$LAUNCH_LABEL.plist"
   launchctl bootout "gui/$TARGET_UID/$LAUNCH_LABEL" >/dev/null 2>&1 || true
@@ -22,7 +24,9 @@ for LAUNCH_LABEL in "${LAUNCH_LABELS[@]}"; do
 done
 
 rm -rf "$APP_DEST"
+rm -rf "$USER_APP_DEST"
 rm -rf "$APP_DEST_DIR/NoSleepM.app"
+rm -rf "$TARGET_HOME/Applications/NoSleepM.app"
 
 echo "Uninstalled app and auto-start agent."
 echo "Kept event logs at: $TARGET_HOME/Library/Application Support/NopeSleepMac/events.log"

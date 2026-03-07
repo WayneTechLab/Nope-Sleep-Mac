@@ -2,10 +2,12 @@
 
 Nope-Sleep Mac is a production-oriented macOS menu bar utility for sleep control, scheduling, startup automation, and operational diagnostics.
 
+Supported OS: macOS 13 or newer.
+
 ## 20 Production Features
 
 1. Menu bar app with short status title (`N.S.M.`)
-2. Drag-install `.dmg` packaging for `/Applications`
+2. Universal builds for Apple Silicon and Intel Macs
 3. Launch at boot toggle from app menu
 4. `SMAppService` startup registration on macOS 13+
 5. LaunchAgent fallback for startup reliability
@@ -23,7 +25,7 @@ Nope-Sleep Mac is a production-oriented macOS menu bar utility for sleep control
 17. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
 18. Event history log with bounded in-memory buffering
 19. Service log rotation to cap disk usage
-20. One-click desktop experience window + self-test, status copy, and diagnostics export tooling
+20. GitHub release installer for installing on another Mac from Terminal
 
 ## Build
 
@@ -42,6 +44,49 @@ Build output:
 
 DMG output:
 `./dist/Nope-Sleep Mac-1.0.0.dmg`
+
+## Create Terminal Install Archive
+
+```bash
+./package-terminal.sh
+```
+
+Archive output:
+`./dist/Nope-Sleep Mac-1.0.0-terminal.tar.gz`
+
+Install on another Mac from Terminal:
+
+```bash
+tar -xzf "Nope-Sleep Mac-1.0.0-terminal.tar.gz"
+cd "Nope-Sleep Mac-1.0.0-terminal"
+./terminal-install.sh
+```
+
+If you want a system-wide install into `/Applications`:
+
+```bash
+sudo ./terminal-install.sh
+```
+
+## Install From GitHub On Any Mac
+
+Once the repo is on GitHub and the release asset is uploaded, install directly from Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | zsh -s -- OWNER/REPO
+```
+
+Install a specific release tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | zsh -s -- OWNER/REPO v1.0.0
+```
+
+If you want the app installed system-wide into `/Applications`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | sudo zsh -s -- OWNER/REPO
+```
 
 ## Install Like Standard macOS Software
 
@@ -62,6 +107,8 @@ If `/Applications` needs admin rights:
 sudo ./install.sh
 ```
 
+`./install.sh` is for source installs from this repo. `./terminal-install.sh` is for prebuilt installs from the packaged archive.
+
 ## Production Release (Signed + Optional Notarization)
 
 Build and sign:
@@ -78,10 +125,22 @@ NOTARY_PROFILE="your-notarytool-profile" \
 ./release.sh
 ```
 
+Build, sign, and upload to GitHub Releases with `gh`:
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+GITHUB_REPO="OWNER/REPO" \
+UPLOAD_TO_GITHUB=1 \
+./release.sh
+```
+
 Optional environment variables:
 - `VERSION` (default `1.0.0`)
 - `BUILD_NUMBER` (default `1`)
 - `SIGN_DMG` (`1` or `0`)
+- `GITHUB_REPO` (`owner/repo`)
+- `GITHUB_TAG` (default `vVERSION`)
+- `UPLOAD_TO_GITHUB` (`1` or `0`)
 
 ## Logs
 

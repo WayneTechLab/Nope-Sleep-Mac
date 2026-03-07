@@ -8,6 +8,7 @@ DIST_DIR="$SCRIPT_DIR/dist"
 STAGE_DIR="$DIST_DIR/dmg-root"
 APP_SOURCE="$SCRIPT_DIR/build/$APP_NAME.app"
 DMG_PATH="$DIST_DIR/$APP_NAME-$VERSION.dmg"
+PACKAGE_BUILD_ARCHS="${BUILD_ARCHS:-arm64 x86_64}"
 
 if ! command -v hdiutil >/dev/null 2>&1; then
   echo "Error: hdiutil not found on this system."
@@ -15,7 +16,7 @@ if ! command -v hdiutil >/dev/null 2>&1; then
 fi
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  VERSION="$VERSION" "$SCRIPT_DIR/build.sh"
+  VERSION="$VERSION" BUILD_ARCHS="$PACKAGE_BUILD_ARCHS" "$SCRIPT_DIR/build.sh"
 fi
 
 if [ ! -d "$APP_SOURCE" ]; then
