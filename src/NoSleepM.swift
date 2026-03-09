@@ -10,6 +10,20 @@ enum AppMeta {
     static let supportFolder = "NopeSleepMac"
     static let launchLabel = "com.nope_sleep_mac.autostart"
     static let diagnosticsPrefix = "NSM-diagnostics"
+    static let providerName = "WayneTechLab.com"
+    static let providerURL = URL(string: "https://WayneTechLab.com")!
+    static let repositoryURL = URL(string: "https://github.com/WayneTechLab/Nope-Sleep-Mac")!
+    static let wikiURL = URL(string: "https://github.com/WayneTechLab/Nope-Sleep-Mac/wiki")!
+    static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/WayneTechLab/Nope-Sleep-Mac/releases/latest")!
+    static let latestReleaseURL = URL(string: "https://github.com/WayneTechLab/Nope-Sleep-Mac/releases/latest")!
+
+    static var currentVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0"
+    }
+
+    static var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
 }
 
 extension Notification.Name {
@@ -284,6 +298,273 @@ enum CommandRunner {
                 command
             ]
         )
+    }
+}
+
+struct UpdateInfo {
+    let version: String
+    let releaseURL: URL
+    let downloadURL: URL?
+}
+
+enum UpdateStatus {
+    case idle
+    case checking
+    case upToDate
+    case available(UpdateInfo)
+    case failed(String)
+
+    var menuTitle: String {
+        switch self {
+        case .idle:
+            return "Check for Updates"
+        case .checking:
+            return "Checking for Updates..."
+        case .upToDate:
+            return "You're Up to Date"
+        case .available(let info):
+            return "Install Update v\(info.version)"
+        case .failed:
+            return "Update Check Failed"
+        }
+    }
+
+    var desktopValue: String {
+        switch self {
+        case .idle:
+            return "Ready"
+        case .checking:
+            return "Checking"
+        case .upToDate:
+            return "Current"
+        case .available(let info):
+            return "v\(info.version)"
+        case .failed:
+            return "Offline"
+        }
+    }
+
+    var accentColor: NSColor {
+        switch self {
+        case .idle:
+            return NSColor(calibratedRed: 0.80, green: 0.88, blue: 1.00, alpha: 1.0)
+        case .checking:
+            return NSColor(calibratedRed: 0.47, green: 0.83, blue: 1.00, alpha: 1.0)
+        case .upToDate:
+            return NSColor(calibratedRed: 0.45, green: 0.93, blue: 0.72, alpha: 1.0)
+        case .available:
+            return NSColor(calibratedRed: 1.00, green: 0.79, blue: 0.38, alpha: 1.0)
+        case .failed:
+            return NSColor(calibratedRed: 1.00, green: 0.55, blue: 0.55, alpha: 1.0)
+        }
+    }
+
+    var buttonTitle: String {
+        switch self {
+        case .available(let info):
+            return "Install v\(info.version)"
+        case .checking:
+            return "Checking..."
+        default:
+            return "Check for Updates"
+        }
+    }
+
+    var isChecking: Bool {
+        if case .checking = self {
+            return true
+        }
+        return false
+    }
+}
+
+final class UpdateChecker {
+    private struct ReleaseAsset: Decodable {
+        let name: String
+        let browser_download_url: String
+    }
+
+    private struct ReleasePayload: Decodable {
+        let tag_name: String
+        let html_url: String
+        let assets: [ReleaseAsset]
+    }
+
+    enum UpdateError: LocalizedError {
+        case invalidResponse
+        case invalidReleaseURL
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidResponse:
+                return "The release feed returned an invalid response."
+            case .invalidReleaseURL:
+                return "The release URL from GitHub is invalid."
+            }
+        }
+    }
+
+    func fetchLatestRelease(completion: @escaping (Result<UpdateInfo, Error>) -> Void) {
+        var request = URLRequest(url: AppMeta.latestReleaseAPIURL)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("\(AppMeta.appName)/\(AppMeta.currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            let result: Result<UpdateInfo, Error>
+
+            if let error {
+                result = .failure(error)
+            } else if let data {
+                do {
+                    let payload = try JSONDecoder().decode(ReleasePayload.self, from: data)
+                    guard let releaseURL = URL(string: payload.html_url) else {
+                        throw UpdateError.invalidReleaseURL
+                    }
+
+                    let version = Self.normalizedVersion(payload.tag_name)
+                    let dmgURL = payload.assets.first(where: { $0.name.lowercased().hasSuffix(".dmg") })
+                        .flatMap { URL(string: $0.browser_download_url) }
+
+                    result = .success(UpdateInfo(version: version, releaseURL: releaseURL, downloadURL: dmgURL))
+                } catch {
+                    result = .failure(error)
+                }
+            } else {
+                result = .failure(UpdateError.invalidResponse)
+            }
+
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
+    static func isNewer(_ remoteVersion: String, than localVersion: String) -> Bool {
+        normalizedVersion(remoteVersion).compare(normalizedVersion(localVersion), options: .numeric) == .orderedDescending
+    }
+
+    private static func normalizedVersion(_ version: String) -> String {
+        let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("v") {
+            return String(trimmed.dropFirst())
+        }
+        return trimmed
+    }
+}
+
+final class GradientBackdropView: NSView {
+    private let gradientLayer = CAGradientLayer()
+    private let glowLayerA = CALayer()
+    private let glowLayerB = CALayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer = CALayer()
+        layer?.masksToBounds = true
+
+        gradientLayer.colors = [
+            NSColor(calibratedRed: 0.06, green: 0.09, blue: 0.14, alpha: 1.0).cgColor,
+            NSColor(calibratedRed: 0.12, green: 0.18, blue: 0.29, alpha: 1.0).cgColor,
+            NSColor(calibratedRed: 0.05, green: 0.07, blue: 0.11, alpha: 1.0).cgColor
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0.0, y: 1.0)
+        gradientLayer.endPoint = CGPoint(x: 1.0, y: 0.0)
+
+        glowLayerA.backgroundColor = NSColor(calibratedRed: 0.50, green: 0.82, blue: 1.00, alpha: 0.18).cgColor
+        glowLayerB.backgroundColor = NSColor(calibratedRed: 0.87, green: 0.95, blue: 1.00, alpha: 0.12).cgColor
+
+        for glowLayer in [glowLayerA, glowLayerB] {
+            glowLayer.shadowOpacity = 0.35
+            glowLayer.shadowRadius = 80
+            glowLayer.shadowColor = glowLayer.backgroundColor
+            layer?.addSublayer(glowLayer)
+        }
+
+        layer?.insertSublayer(gradientLayer, at: 0)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        gradientLayer.frame = bounds
+
+        let width = bounds.width
+        let height = bounds.height
+
+        glowLayerA.frame = NSRect(x: width * 0.64, y: height * 0.54, width: 280, height: 280)
+        glowLayerA.cornerRadius = 140
+
+        glowLayerB.frame = NSRect(x: width * 0.05, y: height * 0.10, width: 220, height: 220)
+        glowLayerB.cornerRadius = 110
+    }
+}
+
+class GlassCardView: NSVisualEffectView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .hudWindow
+        blendingMode = .behindWindow
+        state = .active
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 28
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.12).cgColor
+        layer?.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.08).cgColor
+        layer?.shadowColor = NSColor.black.withAlphaComponent(0.25).cgColor
+        layer?.shadowOpacity = 0.35
+        layer?.shadowRadius = 18
+        layer?.shadowOffset = CGSize(width: 0, height: -4)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+final class MetricCardView: GlassCardView {
+    private let titleField: NSTextField
+    private let valueField: NSTextField
+
+    init(title: String) {
+        titleField = NSTextField(labelWithString: title.uppercased())
+        valueField = NSTextField(labelWithString: "--")
+        super.init(frame: .zero)
+
+        titleField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        titleField.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.62)
+
+        valueField.font = NSFont.systemFont(ofSize: 24, weight: .bold)
+        valueField.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.95)
+
+        let stack = NSStackView(views: [titleField, valueField])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 96)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(value: String, color: NSColor) {
+        valueField.stringValue = value
+        valueField.textColor = color
     }
 }
 
@@ -987,6 +1268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let serviceController = BackgroundServiceController()
     private let blocker = SleepBlocker()
     private let resourceMonitor = ResourceMonitor()
+    private let updateChecker = UpdateChecker()
 
     private var state: AppState
 
@@ -995,18 +1277,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var enableProtectionTimer: Timer?
     private var disableProtectionTimer: Timer?
     private var monitorTimer: Timer?
+    private var updateTimer: Timer?
 
     private var restartTimestamps: [Date] = []
     private var isTerminating = false
+    private var updateStatus: UpdateStatus = .idle
 
     private var statusItem: NSStatusItem?
     private var desktopWindow: NSWindow?
-    private var desktopStatusTextView: NSTextView?
+    private var desktopSummaryTextView: NSTextView?
+    private var desktopEventLogTextView: NSTextView?
     private var desktopServiceButton: NSButton?
     private var desktopSleepButton: NSButton?
+    private var desktopUpdateButton: NSButton?
+    private var desktopServiceCard: MetricCardView?
+    private var desktopProtectionCard: MetricCardView?
+    private var desktopVersionCard: MetricCardView?
+    private var desktopUpdateCard: MetricCardView?
 
     private let titleItem = NSMenuItem(title: AppMeta.shortName, action: nil, keyEquivalent: "")
     private let openDesktopModeItem = NSMenuItem(title: "Open N.S.M. Desktop Experience", action: #selector(openDesktopExperience), keyEquivalent: "")
+    private let checkUpdatesItem = NSMenuItem(title: "Check for Updates", action: #selector(checkForUpdatesOrInstall), keyEquivalent: "")
+    private let openWikiItem = NSMenuItem(title: "Open GitHub Wiki", action: #selector(openWiki), keyEquivalent: "")
 
     private let resourceItem = NSMenuItem(title: "Mini Resource Monitor", action: nil, keyEquivalent: "")
     private let resourceMenu = NSMenu(title: "Mini Resource Monitor")
@@ -1050,6 +1342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private let recentEventsItem = NSMenuItem(title: "Recent Events", action: nil, keyEquivalent: "")
     private let recentEventsMenu = NSMenu(title: "Recent Events")
+    private let providedByItem = NSMenuItem(title: "Provided BY: WayneTechLab.com", action: #selector(openProviderWebsite), keyEquivalent: "")
 
     private let sleepTimerOptions: [Int] = [30, 60, 120, 240]
     private let shutdownTimerOptions: [Int] = [15, 30, 60, 120]
@@ -1070,6 +1363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         registerSystemObservers()
         registerLogObserver()
         startMonitorTimer()
+        startUpdateTimer()
 
         serviceController.onUnexpectedTermination = { [weak self] status, details in
             self?.handleUnexpectedServiceTermination(status: status, details: details)
@@ -1091,6 +1385,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         enableProtectionTimer?.invalidate()
         disableProtectionTimer?.invalidate()
         monitorTimer?.invalidate()
+        updateTimer?.invalidate()
 
         serviceController.stop()
         blocker.deactivate()
@@ -1105,7 +1400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             button.title = ""
             button.imagePosition = .imageOnly
-            button.toolTip = AppMeta.appName
+            button.toolTip = "\(AppMeta.appName) v\(AppMeta.currentVersion) • Provided BY: \(AppMeta.providerName)"
         }
 
         titleItem.isEnabled = false
@@ -1116,6 +1411,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buildResourceMenu()
 
         openDesktopModeItem.target = self
+        checkUpdatesItem.target = self
+        openWikiItem.target = self
         serviceToggleItem.target = self
         sleepToggleItem.target = self
         autoWakeToggleItem.target = self
@@ -1125,6 +1422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runSelfTestItem.target = self
         copyStatusItem.target = self
         exportDiagnosticsItem.target = self
+        providedByItem.target = self
 
         buildSleepTimerMenu()
         buildShutdownTimerMenu()
@@ -1148,6 +1446,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         menu.addItem(titleItem)
         menu.addItem(openDesktopModeItem)
+        menu.addItem(checkUpdatesItem)
+        menu.addItem(openWikiItem)
         menu.addItem(resourceItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(serviceToggleItem)
@@ -1171,6 +1471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(openServiceLogItem)
         menu.addItem(clearHistoryItem)
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(providedByItem)
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -1293,8 +1594,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func makeDesktopActionButton(title: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
-        button.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        button.controlSize = .large
+        button.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        button.contentTintColor = .white
+        button.bezelColor = NSColor(calibratedRed: 0.28, green: 0.62, blue: 0.95, alpha: 0.92)
         return button
+    }
+
+    private func makeDesktopLinkButton(title: String, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.isBordered = false
+        button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        button.contentTintColor = NSColor(calibratedRed: 0.76, green: 0.88, blue: 1.0, alpha: 1.0)
+        return button
+    }
+
+    private func makeDesktopTextView(initialText: String) -> NSTextView {
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.88)
+        textView.textContainerInset = NSSize(width: 10, height: 12)
+        textView.string = initialText
+
+        if let textContainer = textView.textContainer {
+            textContainer.widthTracksTextView = true
+            textContainer.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        }
+
+        return textView
+    }
+
+    private func wrapScrollContent(title: String, textView: NSTextView, minHeight: CGFloat) -> GlassCardView {
+        let card = GlassCardView()
+
+        let titleField = NSTextField(labelWithString: title)
+        titleField.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleField.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.96)
+
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.documentView = textView
+
+        let stack = NSStackView(views: [titleField, scrollView])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
+            stack.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -36),
+            scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight)
+        ])
+
+        return card
     }
 
     private func ensureDesktopWindow() -> NSWindow {
@@ -1303,113 +1666,154 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1160, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "\(AppMeta.shortName) Desktop Experience"
-        window.minSize = NSSize(width: 900, height: 580)
+        window.title = AppMeta.appName
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.minSize = NSSize(width: 980, height: 680)
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
 
         if #available(macOS 11.0, *) {
-            window.toolbarStyle = .unified
+            window.toolbarStyle = .unifiedCompact
         }
 
-        let contentView = NSView()
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        window.contentView = contentView
+        let backdropView = GradientBackdropView()
+        backdropView.translatesAutoresizingMaskIntoConstraints = false
+        window.contentView = backdropView
 
-        let titleLabel = NSTextField(labelWithString: "\(AppMeta.shortName) Desktop Experience")
-        titleLabel.font = NSFont.systemFont(ofSize: 28, weight: .bold)
+        let shellCard = GlassCardView()
+        backdropView.addSubview(shellCard)
 
-        let subtitleLabel = NSTextField(labelWithString: "\(AppMeta.appName) command center")
-        subtitleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        subtitleLabel.textColor = .secondaryLabelColor
+        let eyebrowLabel = NSTextField(labelWithString: "PROVIDED BY \(AppMeta.providerName.uppercased())")
+        eyebrowLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        eyebrowLabel.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.58)
 
-        let headerStack = NSStackView(views: [titleLabel, subtitleLabel])
+        let titleLabel = NSTextField(labelWithString: AppMeta.appName)
+        titleLabel.font = NSFont.systemFont(ofSize: 36, weight: .black)
+        titleLabel.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.98)
+
+        let subtitleLabel = NSTextField(labelWithString: "2026 glass control surface for uptime, sleep protection, and power orchestration.")
+        subtitleLabel.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        subtitleLabel.textColor = NSColor(calibratedWhite: 1.0, alpha: 0.72)
+
+        let providerButton = makeDesktopLinkButton(title: "WayneTechLab.com", action: #selector(openProviderWebsite))
+        let wikiButton = makeDesktopLinkButton(title: "GitHub Wiki", action: #selector(openWiki))
+
+        let linkStack = NSStackView(views: [providerButton, wikiButton])
+        linkStack.orientation = .horizontal
+        linkStack.alignment = .centerY
+        linkStack.spacing = 16
+
+        let headerStack = NSStackView(views: [eyebrowLabel, titleLabel, subtitleLabel, linkStack])
         headerStack.orientation = .vertical
         headerStack.alignment = .leading
-        headerStack.spacing = 4
+        headerStack.spacing = 6
 
         let desktopServiceButton = makeDesktopActionButton(title: "Enable Service", action: #selector(desktopToggleService))
         let desktopSleepButton = makeDesktopActionButton(title: "Enable Sleep Prevention", action: #selector(desktopToggleSleep))
-        let openEventLogButton = makeDesktopActionButton(title: "Open Event Log", action: #selector(openEventLog))
-        let openServiceLogButton = makeDesktopActionButton(title: "Open Service Log", action: #selector(openServiceLog))
+        let desktopUpdateButton = makeDesktopActionButton(title: "Check for Updates", action: #selector(checkForUpdatesOrInstall))
         let exportDiagnosticsButton = makeDesktopActionButton(title: "Export Diagnostics", action: #selector(exportDiagnostics))
         let closeDesktopButton = makeDesktopActionButton(title: "Close Desktop Mode", action: #selector(closeDesktopExperience))
+        closeDesktopButton.bezelColor = NSColor(calibratedWhite: 1.0, alpha: 0.16)
 
         let actionStack = NSStackView(views: [
             desktopServiceButton,
             desktopSleepButton,
-            openEventLogButton,
-            openServiceLogButton,
+            desktopUpdateButton,
             exportDiagnosticsButton,
             closeDesktopButton
         ])
         actionStack.orientation = .horizontal
         actionStack.alignment = .centerY
+        actionStack.spacing = 10
         actionStack.distribution = .fillProportionally
-        actionStack.spacing = 8
 
-        let statusScrollView = NSScrollView()
-        statusScrollView.translatesAutoresizingMaskIntoConstraints = false
-        statusScrollView.hasVerticalScroller = true
-        statusScrollView.borderType = .bezelBorder
-        statusScrollView.drawsBackground = true
+        let desktopServiceCard = MetricCardView(title: "Service")
+        let desktopProtectionCard = MetricCardView(title: "Sleep Shield")
+        let desktopVersionCard = MetricCardView(title: "Version")
+        let desktopUpdateCard = MetricCardView(title: "Update")
 
-        let statusTextView = NSTextView()
-        statusTextView.isEditable = false
-        statusTextView.isSelectable = true
-        statusTextView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        statusTextView.textContainerInset = NSSize(width: 10, height: 12)
-        statusTextView.string = "Loading \(AppMeta.shortName) desktop data..."
+        let metricStack = NSStackView(views: [
+            desktopServiceCard,
+            desktopProtectionCard,
+            desktopVersionCard,
+            desktopUpdateCard
+        ])
+        metricStack.orientation = .horizontal
+        metricStack.alignment = .top
+        metricStack.spacing = 12
+        metricStack.distribution = .fillEqually
 
-        if let textContainer = statusTextView.textContainer {
-            textContainer.widthTracksTextView = true
-            textContainer.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        }
+        let summaryTextView = makeDesktopTextView(initialText: "Preparing control-plane summary...")
+        let eventLogTextView = makeDesktopTextView(initialText: "Waiting for event history...")
 
-        statusScrollView.documentView = statusTextView
+        let summaryCard = wrapScrollContent(title: "Control Plane + Telemetry", textView: summaryTextView, minHeight: 220)
+        let eventLogCard = wrapScrollContent(title: "Event History", textView: eventLogTextView, minHeight: 280)
 
-        let rootStack = NSStackView(views: [headerStack, actionStack, statusScrollView])
+        let contentStack = NSStackView(views: [summaryCard, eventLogCard])
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 14
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let rootStack = NSStackView(views: [headerStack, actionStack, metricStack, contentStack])
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
-        rootStack.spacing = 12
+        rootStack.spacing = 16
         rootStack.translatesAutoresizingMaskIntoConstraints = false
 
-        contentView.addSubview(rootStack)
+        shellCard.addSubview(rootStack)
 
         NSLayoutConstraint.activate([
-            rootStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 18),
-            rootStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -18),
-            rootStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 18),
-            rootStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -18),
+            shellCard.leadingAnchor.constraint(equalTo: backdropView.leadingAnchor, constant: 18),
+            shellCard.trailingAnchor.constraint(equalTo: backdropView.trailingAnchor, constant: -18),
+            shellCard.topAnchor.constraint(equalTo: backdropView.topAnchor, constant: 18),
+            shellCard.bottomAnchor.constraint(equalTo: backdropView.bottomAnchor, constant: -18),
+
+            rootStack.leadingAnchor.constraint(equalTo: shellCard.leadingAnchor, constant: 22),
+            rootStack.trailingAnchor.constraint(equalTo: shellCard.trailingAnchor, constant: -22),
+            rootStack.topAnchor.constraint(equalTo: shellCard.topAnchor, constant: 22),
+            rootStack.bottomAnchor.constraint(equalTo: shellCard.bottomAnchor, constant: -22),
 
             headerStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
             actionStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
-            statusScrollView.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
-            statusScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420)
+            metricStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            contentStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            metricStack.heightAnchor.constraint(greaterThanOrEqualToConstant: 96)
         ])
 
         self.desktopWindow = window
-        self.desktopStatusTextView = statusTextView
+        self.desktopSummaryTextView = summaryTextView
+        self.desktopEventLogTextView = eventLogTextView
         self.desktopServiceButton = desktopServiceButton
         self.desktopSleepButton = desktopSleepButton
+        self.desktopUpdateButton = desktopUpdateButton
+        self.desktopServiceCard = desktopServiceCard
+        self.desktopProtectionCard = desktopProtectionCard
+        self.desktopVersionCard = desktopVersionCard
+        self.desktopUpdateCard = desktopUpdateCard
 
         return window
     }
 
     private func refreshDesktopWindowState(resourceSnapshot: ResourceSnapshot? = nil) {
-        guard let desktopStatusTextView else {
+        guard let desktopSummaryTextView, let desktopEventLogTextView else {
             return
         }
 
         desktopServiceButton?.title = serviceController.isRunning ? "Disable Service" : "Enable Service"
         desktopSleepButton?.title = blocker.isActive ? "Disable Sleep Prevention" : "Enable Sleep Prevention"
+        desktopUpdateButton?.title = updateStatus.buttonTitle
+        desktopUpdateButton?.isEnabled = !updateStatus.isChecking
 
         let snapshot = resourceSnapshot ?? resourceMonitor.sample()
 
@@ -1429,44 +1833,148 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             shutdownTimerText = "Off"
         }
 
-        var lines: [String] = []
-        lines.append("\(AppMeta.shortName) Desktop Snapshot")
-        lines.append("Generated: \(PowerScheduler.userFacingDate(Date()))")
-        lines.append("")
-        lines.append("Control Plane")
-        lines.append("- Service: \(serviceController.isRunning ? "Running" : "Stopped")")
-        lines.append("- Sleep Prevention: \(blocker.isActive ? "On" : "Off")")
-        lines.append("- Launch at Boot: \(state.launchAtBoot ? "Enabled" : "Disabled")")
-        lines.append("- Auto-Reenable After Wake: \(state.autoReenableAfterWake ? "Enabled" : "Disabled")")
-        lines.append("- Service Watchdog: \(state.serviceWatchdogEnabled ? "Enabled" : "Disabled")")
-        lines.append("- Sleep Timer: \(sleepTimerText)")
-        lines.append("- Shutdown Timer: \(shutdownTimerText)")
-        lines.append("- Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
-        lines.append("- Enable Protection At: \(state.enableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
-        lines.append("- Disable Protection At: \(state.disableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
-        lines.append("")
-        lines.append("Mini Resource Monitor")
-        lines.append("- \(snapshot.cpuText)")
-        lines.append("- \(snapshot.memoryText)")
-        lines.append("- \(snapshot.diskText)")
-        lines.append("- \(snapshot.batteryText)")
-        lines.append("- Wi-Fi: \(snapshot.wifiText)")
-        lines.append("- Bluetooth: \(snapshot.bluetoothText)")
-        lines.append("- \(snapshot.uptimeText)")
-        lines.append("")
-        lines.append("Recent Events")
+        desktopServiceCard?.update(
+            value: serviceController.isRunning ? "Running" : "Standby",
+            color: serviceController.isRunning
+                ? NSColor(calibratedRed: 0.55, green: 0.93, blue: 0.73, alpha: 1.0)
+                : NSColor(calibratedWhite: 1.0, alpha: 0.78)
+        )
+        desktopProtectionCard?.update(
+            value: blocker.isActive ? "Armed" : "Idle",
+            color: blocker.isActive
+                ? NSColor(calibratedRed: 0.55, green: 0.93, blue: 0.73, alpha: 1.0)
+                : NSColor(calibratedWhite: 1.0, alpha: 0.78)
+        )
+        desktopVersionCard?.update(
+            value: "v\(AppMeta.currentVersion)",
+            color: NSColor(calibratedRed: 0.83, green: 0.91, blue: 1.0, alpha: 1.0)
+        )
+        desktopUpdateCard?.update(value: updateStatus.desktopValue, color: updateStatus.accentColor)
 
-        let recentEvents = EventLog.shared.snapshot().suffix(120)
-        if recentEvents.isEmpty {
-            lines.append("(No events yet)")
-        } else {
-            lines.append(contentsOf: recentEvents)
+        let summaryLines = [
+            "Version: v\(AppMeta.currentVersion) (build \(AppMeta.currentBuild))",
+            "Provided BY: \(AppMeta.providerName)",
+            "",
+            "Control Plane",
+            "- Service: \(serviceController.isRunning ? "Running" : "Stopped")",
+            "- Sleep Prevention: \(blocker.isActive ? "On" : "Off")",
+            "- Launch at Boot: \(state.launchAtBoot ? "Enabled" : "Disabled")",
+            "- Auto-Reenable After Wake: \(state.autoReenableAfterWake ? "Enabled" : "Disabled")",
+            "- Service Watchdog: \(state.serviceWatchdogEnabled ? "Enabled" : "Disabled")",
+            "- Update Status: \(updateStatus.menuTitle)",
+            "",
+            "Timers + Scheduling",
+            "- Sleep Timer: \(sleepTimerText)",
+            "- Shutdown Timer: \(shutdownTimerText)",
+            "- Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
+            "- Enable Protection At: \(state.enableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
+            "- Disable Protection At: \(state.disableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
+            "",
+            "Live Resource Monitor",
+            "- \(snapshot.cpuText)",
+            "- \(snapshot.memoryText)",
+            "- \(snapshot.diskText)",
+            "- \(snapshot.batteryText)",
+            "- Wi-Fi: \(snapshot.wifiText)",
+            "- Bluetooth: \(snapshot.bluetoothText)",
+            "- \(snapshot.uptimeText)"
+        ]
+
+        desktopSummaryTextView.string = summaryLines.joined(separator: "\n")
+
+        let recentEvents = EventLog.shared.snapshot().suffix(140)
+        desktopEventLogTextView.string = recentEvents.isEmpty
+            ? "No event history yet."
+            : recentEvents.joined(separator: "\n")
+    }
+
+    private func startUpdateTimer() {
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 21600, repeats: true) { [weak self] _ in
+            self?.performUpdateCheck(userInitiated: false)
         }
 
-        let text = lines.joined(separator: "\n")
-        if desktopStatusTextView.string != text {
-            desktopStatusTextView.string = text
+        if let updateTimer {
+            RunLoop.main.add(updateTimer, forMode: .common)
         }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.performUpdateCheck(userInitiated: false)
+        }
+    }
+
+    private func showMessageAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+    }
+
+    private func showUpdateAvailableAlert(_ info: UpdateInfo) {
+        let alert = NSAlert()
+        alert.messageText = "Update Available"
+        alert.informativeText = "Nope-Sleep Mac v\(info.version) is available. Open the release now?"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open Update")
+        alert.addButton(withTitle: "Not Now")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            openUpdateDestination(info)
+        }
+    }
+
+    private func performUpdateCheck(userInitiated: Bool) {
+        guard !updateStatus.isChecking else {
+            return
+        }
+
+        updateStatus = .checking
+        refreshMenuState()
+
+        updateChecker.fetchLatestRelease { [weak self] result in
+            guard let self else {
+                return
+            }
+
+            switch result {
+            case .success(let info):
+                if UpdateChecker.isNewer(info.version, than: AppMeta.currentVersion) {
+                    updateStatus = .available(info)
+                    EventLog.shared.add("Update available: v\(info.version).")
+                    if userInitiated {
+                        showUpdateAvailableAlert(info)
+                    }
+                } else {
+                    updateStatus = .upToDate
+                    if userInitiated {
+                        showMessageAlert(
+                            title: "You're Up to Date",
+                            message: "\(AppMeta.appName) is already on the latest version installed here: v\(AppMeta.currentVersion)."
+                        )
+                    }
+                }
+            case .failure(let error):
+                updateStatus = .failed(error.localizedDescription)
+                EventLog.shared.add("Update check failed: \(error.localizedDescription)")
+                if userInitiated {
+                    showMessageAlert(
+                        title: "Update Check Failed",
+                        message: error.localizedDescription
+                    )
+                }
+            }
+
+            refreshMenuState()
+        }
+    }
+
+    private func openUpdateDestination(_ info: UpdateInfo?) {
+        let destination = info?.downloadURL ?? info?.releaseURL ?? AppMeta.latestReleaseURL
+        NSWorkspace.shared.open(destination)
     }
 
     private func startMonitorTimer() {
@@ -1577,10 +2085,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func refreshMenuState() {
-        titleItem.title = "\(AppMeta.shortName) • Service \(serviceController.isRunning ? "Running" : "Stopped") • Sleep \(blocker.isActive ? "On" : "Off")"
+        titleItem.title = "\(AppMeta.appName) • v\(AppMeta.currentVersion)"
         openDesktopModeItem.title = desktopWindow == nil
             ? "Open \(AppMeta.shortName) Desktop Experience"
             : "Open \(AppMeta.shortName) Desktop Experience (Active)"
+        checkUpdatesItem.title = updateStatus.menuTitle
+        checkUpdatesItem.isEnabled = !updateStatus.isChecking
+        providedByItem.title = "Provided BY: \(AppMeta.providerName)"
 
         serviceToggleItem.state = serviceController.isRunning ? .on : .off
         sleepToggleItem.state = blocker.isActive ? .on : .off
@@ -2187,6 +2698,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toggleSleepPrevention()
     }
 
+    @objc private func checkForUpdatesOrInstall() {
+        switch updateStatus {
+        case .available(let info):
+            openUpdateDestination(info)
+        case .checking:
+            return
+        default:
+            performUpdateCheck(userInitiated: true)
+        }
+    }
+
+    @objc private func openProviderWebsite() {
+        NSWorkspace.shared.open(AppMeta.providerURL)
+    }
+
+    @objc private func openWiki() {
+        NSWorkspace.shared.open(AppMeta.wikiURL)
+    }
+
     @objc private func toggleLaunchAtBoot() {
         let desired = !state.launchAtBoot
         if launchAtBootManager.setEnabled(desired) {
@@ -2446,11 +2976,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func copyStatusToClipboard() {
         let statusText = [
             "\(AppMeta.shortName) Status",
+            "Version: \(AppMeta.currentVersion) (\(AppMeta.currentBuild))",
+            "Provided BY: \(AppMeta.providerName)",
             "Service running: \(serviceController.isRunning)",
             "Sleep prevention active: \(blocker.isActive)",
             "Launch at boot: \(state.launchAtBoot)",
             "Auto-reenable after wake: \(state.autoReenableAfterWake)",
             "Service watchdog: \(state.serviceWatchdogEnabled)",
+            "Update status: \(updateStatus.menuTitle)",
             "Sleep timer: \(state.timerEndDate.map(PowerScheduler.userFacingDate) ?? "off")",
             "Shutdown timer: \(state.shutdownEndDate.map(PowerScheduler.userFacingDate) ?? "off")",
             "Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "none")",
@@ -2515,9 +3048,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         desktopWindow = nil
-        desktopStatusTextView = nil
+        desktopSummaryTextView = nil
+        desktopEventLogTextView = nil
         desktopServiceButton = nil
         desktopSleepButton = nil
+        desktopUpdateButton = nil
+        desktopServiceCard = nil
+        desktopProtectionCard = nil
+        desktopVersionCard = nil
+        desktopUpdateCard = nil
 
         if !isTerminating {
             _ = NSApplication.shared.setActivationPolicy(.accessory)
