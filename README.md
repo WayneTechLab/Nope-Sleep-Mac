@@ -1,115 +1,163 @@
-# Nope-Sleep Mac (N.S.M.)
+# Nope-Sleep Mac
 
-Nope-Sleep Mac is a production-oriented macOS menu bar utility for sleep control, scheduling, startup automation, and operational diagnostics.
+Provided BY: [WayneTechLab.com](https://WayneTechLab.com)
 
-Supported OS: macOS 13 or newer.
+Nope-Sleep Mac is a macOS menu bar utility that keeps a Mac awake, manages sleep and shutdown schedules, exposes power profiles, and gives you a desktop control surface when you want a full app experience.
 
-## 20 Production Features
+Supported OS: macOS 13 or newer
 
-1. Menu bar app with short status title (`N.S.M.`)
-2. Universal builds for Apple Silicon and Intel Macs
-3. Launch at boot toggle from app menu
-4. `SMAppService` startup registration on macOS 13+
-5. LaunchAgent fallback for startup reliability
-6. Service enable/disable toggle for background worker
-7. Sleep prevention toggle (system + display assertions)
-8. Sleep timer presets (`30m`, `1h`, `2h`, `4h`)
-9. Shutdown timer presets (`15m`, `30m`, `1h`, `2h`)
-10. Schedule shutdown at exact date/time
-11. Schedule wake/power-on at exact date/time
-12. Schedule protection enable and disable at exact date/time
-13. One-click cancellation for all scheduled actions
-14. Auto-restore protection after wake option
-15. Service watchdog with restart throttling
-16. Mini resource monitor (CPU, memory, disk, battery, Wi-Fi, Bluetooth, uptime)
-17. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
-18. Event history log with bounded in-memory buffering
-19. Service log rotation to cap disk usage
-20. GitHub release installer for installing on another Mac from Terminal
+GitHub repo: [WayneTechLab/Nope-Sleep-Mac](https://github.com/WayneTechLab/Nope-Sleep-Mac)
 
-## Build
+Wiki: [Nope-Sleep Mac Wiki](https://github.com/WayneTechLab/Nope-Sleep-Mac/wiki)
+
+## Quick Install
+
+### Option 1: Install from GitHub in Terminal
+
+Latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WayneTechLab/Nope-Sleep-Mac/main/install-from-github.sh | zsh -s -- WayneTechLab/Nope-Sleep-Mac
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WayneTechLab/Nope-Sleep-Mac/main/install-from-github.sh | zsh -s -- WayneTechLab/Nope-Sleep-Mac v1.1.0
+```
+
+Install system-wide into `/Applications`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WayneTechLab/Nope-Sleep-Mac/main/install-from-github.sh | sudo zsh -s -- WayneTechLab/Nope-Sleep-Mac
+```
+
+### Option 2: Standard Drag-and-Drop Install
+
+1. Download `Nope-Sleep Mac-1.1.0.dmg` from the latest GitHub release.
+2. Open the DMG.
+3. Drag `Nope-Sleep Mac.app` into `Applications`.
+4. Launch the app from `Applications`.
+5. Enable `Launch at Boot` from the menu if you want it to start automatically.
+
+Release page: [Latest Releases](https://github.com/WayneTechLab/Nope-Sleep-Mac/releases/latest)
+
+## Clean Install From Source
+
+Build the app:
 
 ```bash
 ./build.sh
 ```
 
-Build output:
+Output:
 `./build/Nope-Sleep Mac.app`
 
-## Create Drag-Install DMG
-
-```bash
-./package-dmg.sh
-```
-
-DMG output:
-`./dist/Nope-Sleep Mac-1.0.0.dmg`
-
-## Create Terminal Install Archive
-
-```bash
-./package-terminal.sh
-```
-
-Archive output:
-`./dist/Nope-Sleep Mac-1.0.0-terminal.tar.gz`
-
-Install on another Mac from Terminal:
-
-```bash
-tar -xzf "Nope-Sleep Mac-1.0.0-terminal.tar.gz"
-cd "Nope-Sleep Mac-1.0.0-terminal"
-./terminal-install.sh
-```
-
-If you want a system-wide install into `/Applications`:
-
-```bash
-sudo ./terminal-install.sh
-```
-
-## Install From GitHub On Any Mac
-
-Once the repo is on GitHub and the release asset is uploaded, install directly from Terminal:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | zsh -s -- OWNER/REPO
-```
-
-Install a specific release tag:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | zsh -s -- OWNER/REPO v1.0.0
-```
-
-If you want the app installed system-wide into `/Applications`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | sudo zsh -s -- OWNER/REPO
-```
-
-## Install Like Standard macOS Software
-
-1. Open `./dist/Nope-Sleep Mac-1.0.0.dmg`
-2. Drag `Nope-Sleep Mac.app` into `Applications`
-3. Launch from `Applications`
-4. Enable `Launch at Boot` from the menu if desired
-
-## Optional CLI Install
+Install locally:
 
 ```bash
 ./install.sh
 ```
 
-If `/Applications` needs admin rights:
+Install into `/Applications` with admin rights:
 
 ```bash
 sudo ./install.sh
 ```
 
-`./install.sh` is for source installs from this repo. `./terminal-install.sh` is for prebuilt installs from the packaged archive.
+## Package for Distribution
 
-## Production Release (Signed + Optional Notarization)
+Create a drag-install DMG:
+
+```bash
+./package-dmg.sh
+```
+
+Output:
+`./dist/Nope-Sleep Mac-1.1.0.dmg`
+
+Create a terminal-install archive:
+
+```bash
+./package-terminal.sh
+```
+
+Output:
+`./dist/Nope-Sleep Mac-1.1.0-terminal.tar.gz`
+
+Install that archive on another Mac:
+
+```bash
+tar -xzf "Nope-Sleep Mac-1.1.0-terminal.tar.gz"
+cd "Nope-Sleep Mac-1.1.0-terminal"
+./terminal-install.sh
+```
+
+System-wide install from the unpacked archive:
+
+```bash
+sudo ./terminal-install.sh
+```
+
+## Updates
+
+Nope-Sleep Mac checks GitHub Releases automatically on launch and on a timer while it is running.
+
+When an update is available:
+
+1. The menu item changes to `Install Update vX.Y.Z`.
+2. The desktop experience shows the new version in the `Update` card.
+3. Clicking the update action opens the latest release installer.
+
+Version is shown in:
+
+1. The first line of the menu dropdown.
+2. The menu bar icon hover tooltip.
+3. The desktop experience `Version` card.
+4. Copied diagnostics and status output.
+
+## Desktop Experience
+
+The menu bar stays icon-only for a compact toolbar footprint.
+
+Open the full desktop surface from the menu:
+
+1. Click the moon icon in the menu bar.
+2. Select `Open N.S.M. Desktop Experience`.
+3. Close the window to return to menu-bar-only mode.
+
+The desktop UI includes:
+
+1. Aero-glass styled control surface
+2. Live resource monitor
+3. Update/install action
+4. Event history view
+5. Version and provider branding
+
+## Feature Set
+
+1. Menu bar app with icon-only toolbar presence
+2. Full desktop mode with glass UI
+3. Universal Apple Silicon and Intel builds
+4. Launch at boot toggle
+5. LaunchAgent fallback
+6. Background service toggle
+7. Sleep prevention toggle
+8. Sleep timer presets
+9. Shutdown timer presets
+10. Scheduled shutdown at exact date/time
+11. Scheduled wake/power-on at exact date/time
+12. Scheduled protection enable and disable at exact date/time
+13. Auto-restore protection after wake
+14. Service watchdog with restart throttling
+15. Mini resource monitor
+16. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
+17. Event history logging
+18. Service log rotation
+19. GitHub-backed installer and update path
+20. Provider and version branding in app UX
+
+## Release Workflow
 
 Build and sign:
 
@@ -125,36 +173,40 @@ NOTARY_PROFILE="your-notarytool-profile" \
 ./release.sh
 ```
 
-Build, sign, and upload to GitHub Releases with `gh`:
+Build, sign, and upload the DMG plus terminal archive to GitHub Releases:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-GITHUB_REPO="OWNER/REPO" \
+GITHUB_REPO="WayneTechLab/Nope-Sleep-Mac" \
 UPLOAD_TO_GITHUB=1 \
 ./release.sh
 ```
 
 Optional environment variables:
-- `VERSION` (default `1.0.0`)
-- `BUILD_NUMBER` (default `1`)
-- `SIGN_DMG` (`1` or `0`)
-- `GITHUB_REPO` (`owner/repo`)
-- `GITHUB_TAG` (default `vVERSION`)
-- `UPLOAD_TO_GITHUB` (`1` or `0`)
 
-## Logs
+1. `VERSION` default `1.1.0`
+2. `BUILD_NUMBER` default `1`
+3. `SIGN_DMG` set `1` or `0`
+4. `GITHUB_REPO` set `owner/repo`
+5. `GITHUB_TAG` default `vVERSION`
+6. `UPLOAD_TO_GITHUB` set `1` or `0`
 
-- Event log: `~/Library/Application Support/NopeSleepMac/events.log`
-- Service log: `~/Library/Application Support/NopeSleepMac/service.log`
+## Logs and Diagnostics
 
-## Verify Sleep Assertions
+Event log:
+`~/Library/Application Support/NopeSleepMac/events.log`
+
+Service log:
+`~/Library/Application Support/NopeSleepMac/service.log`
+
+Verify sleep assertions:
 
 ```bash
 pmset -g assertions | grep -i "N.S.M."
 ```
 
-## Important macOS Limits
+## macOS Limits
 
-- Idle sleep and display sleep can be blocked while assertions are active.
-- Manual sleep, lid-close behavior, and some system-driven shutdown paths remain under macOS control.
-- Wake/power-on scheduling uses `pmset` and may require admin authentication.
+1. Idle sleep and display sleep can be blocked while assertions are active.
+2. Manual sleep and lid-close behavior still remain under macOS control.
+3. Wake and power scheduling uses `pmset` and may require admin authentication.

@@ -10,7 +10,7 @@ GITHUB_API_BASE="${GITHUB_API_BASE:-https://api.github.com}"
 if [ -z "$REPO_SLUG" ]; then
   echo "Usage: $0 owner/repo [tag|latest]"
   echo "Example:"
-  echo "  curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install-from-github.sh | zsh -s -- OWNER/REPO"
+  echo "  curl -fsSL https://raw.githubusercontent.com/WayneTechLab/Nope-Sleep-Mac/main/install-from-github.sh | zsh -s -- WayneTechLab/Nope-Sleep-Mac"
   exit 1
 fi
 

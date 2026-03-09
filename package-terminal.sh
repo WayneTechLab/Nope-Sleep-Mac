@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Nope-Sleep Mac"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.1.0}"
 DIST_DIR="$SCRIPT_DIR/dist"
 STAGE_DIR="$DIST_DIR/terminal-root"
 PACKAGE_DIR_NAME="$APP_NAME-$VERSION-terminal"
