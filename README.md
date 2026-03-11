@@ -10,6 +10,41 @@ GitHub repo: [WayneTechLab/Nope-Sleep-Mac](https://github.com/WayneTechLab/Nope-
 
 Wiki: [Nope-Sleep Mac Wiki](https://github.com/WayneTechLab/Nope-Sleep-Mac/wiki)
 
+## Important Notice
+
+Nope-Sleep Mac can keep a Mac awake for extended or indefinite periods. That can increase heat, battery wear, display wear, and general component stress.
+
+The software is provided as-is, with no warranties or guarantees of fitness, compatibility, or uninterrupted operation. Use is at your own risk. Do not rely on it for unattended, shared, public-facing, regulated, or safety-critical environments unless you have independently determined it is appropriate.
+
+Review the full notice in [DISCLAIMER.md](./DISCLAIMER.md).
+
+## 24 Production Features
+
+1. Menu bar app with short status title (`N.S.M.`)
+2. Universal builds for Apple Silicon and Intel Macs
+3. Launch at boot toggle from app menu
+4. `SMAppService` startup registration on macOS 13+
+5. LaunchAgent fallback for startup reliability
+6. Service enable/disable toggle for background worker
+7. Sleep prevention toggle (system + display assertions)
+8. Sleep timer presets (`30m`, `1h`, `2h`, `4h`)
+9. Shutdown timer presets (`15m`, `30m`, `1h`, `2h`)
+10. Schedule shutdown at exact date/time
+11. Schedule wake/power-on at exact date/time
+12. Schedule protection enable and disable at exact date/time
+13. One-click cancellation for all scheduled actions
+14. Auto-restore protection after wake option
+15. Service watchdog with restart throttling
+16. Mini resource monitor (CPU, memory, disk, battery, Wi-Fi, Bluetooth, uptime)
+17. Thermal Guard with automatic cooldown on elevated macOS thermal pressure
+18. Max Runtime Cap with hard-stop presets (`2h`, `4h`, `8h`) or an exact end date/time
+19. AC Power Only Mode that blocks sleep prevention on battery and drops protection when external power is removed
+20. App-Scoped Awake Mode that only keeps the Mac awake while selected apps are running or frontmost
+21. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
+22. Event history log with bounded in-memory buffering
+23. Service log rotation to cap disk usage
+24. GitHub release installer for installing on another Mac from Terminal
+
 ## Quick Install
 
 ### Option 1: Install from GitHub in Terminal
@@ -134,28 +169,29 @@ The desktop UI includes:
 4. Event history view
 5. Version and provider branding
 
-## Feature Set
+## Full Removal and Cleanup
 
-1. Menu bar app with icon-only toolbar presence
-2. Full desktop mode with glass UI
-3. Universal Apple Silicon and Intel builds
-4. Launch at boot toggle
-5. LaunchAgent fallback
-6. Background service toggle
-7. Sleep prevention toggle
-8. Sleep timer presets
-9. Shutdown timer presets
-10. Scheduled shutdown at exact date/time
-11. Scheduled wake/power-on at exact date/time
-12. Scheduled protection enable and disable at exact date/time
-13. Auto-restore protection after wake
-14. Service watchdog with restart throttling
-15. Mini resource monitor
-16. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
-17. Event history logging
-18. Service log rotation
-19. GitHub-backed installer and update path
-20. Provider and version branding in app UX
+The app bundle includes a cleanup helper that removes:
+
+- the app bundle from `/Applications` or `~/Applications`
+- launch agents and login startup leftovers used by this project
+- `~/Library/Application Support/NopeSleepMac`
+- app logs, preferences, caches, and saved state
+- disposable terminal installer folders and matching `.tar.gz` archives when they were used for installation
+
+If the app was installed into `/Applications`:
+
+```bash
+sudo zsh "/Applications/Nope-Sleep Mac.app/Contents/Resources/uninstall-helper.sh"
+```
+
+If the app was installed into `~/Applications`:
+
+```bash
+zsh "$HOME/Applications/Nope-Sleep Mac.app/Contents/Resources/uninstall-helper.sh"
+```
+
+Cleanup writes a detailed report to `/tmp/NopeSleepMac-uninstall-YYYYMMDD-HHMMSS.log`.
 
 ## Release Workflow
 
@@ -208,5 +244,11 @@ pmset -g assertions | grep -i "N.S.M."
 ## macOS Limits
 
 1. Idle sleep and display sleep can be blocked while assertions are active.
-2. Manual sleep and lid-close behavior still remain under macOS control.
+2. Manual sleep, lid-close behavior, and some system-driven shutdown paths remain under macOS control.
 3. Wake and power scheduling uses `pmset` and may require admin authentication.
+
+## Safety and Warranty Reminder
+
+- Long or indefinite wake enforcement can increase heat, battery wear, and other hardware stress.
+- Damage caused by misuse or prolonged unattended operation may affect warranty, support, or AppleCare coverage.
+- The app is provided as-is, without warranties or guarantees.

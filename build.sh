@@ -129,6 +129,10 @@ if [ -f "$RESOURCES_DIR/service-worker.sh" ]; then
   chmod +x "$RESOURCES_DIR/service-worker.sh"
 fi
 
+if [ -f "$RESOURCES_DIR/uninstall-helper.sh" ]; then
+  chmod +x "$RESOURCES_DIR/uninstall-helper.sh"
+fi
+
 plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
 
 rm -rf "$TEMP_BUILD_DIR"

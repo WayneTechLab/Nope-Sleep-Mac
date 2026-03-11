@@ -29,6 +29,8 @@ mkdir -p "$STAGE_DIR"
 mkdir -p "$DIST_DIR"
 
 cp -R "$APP_SOURCE" "$STAGE_DIR/$APP_NAME.app"
+cp "$SCRIPT_DIR/README.md" "$STAGE_DIR/README.md"
+cp "$SCRIPT_DIR/DISCLAIMER.md" "$STAGE_DIR/DISCLAIMER.md"
 ln -s /Applications "$STAGE_DIR/Applications"
 
 rm -f "$DMG_PATH"

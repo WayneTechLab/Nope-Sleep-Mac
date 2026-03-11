@@ -24,10 +24,108 @@ enum AppMeta {
     static var currentBuild: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
     }
+    static let riskWarningVersion = "2026-03-09"
+    static let riskWarningTitle = "Important Safety, Warranty, and Liability Notice"
+    static let riskWarningMenuTitle = "Safety / Warranty Notice"
+    static let riskWarningMenuLines = [
+        "Long or indefinite use can increase heat, battery wear, and hardware stress.",
+        "This software is provided as-is, with no warranties or guarantees.",
+        "Use at your own risk and avoid unattended or safety-critical use.",
+        "Damage caused by misuse may affect warranty, support, or AppleCare coverage."
+    ]
+    static let riskWarningMessage = """
+    \(appName) can keep a Mac awake for extended or indefinite periods. That can increase heat, battery wear, display wear, and overall component stress.
+
+    This software is provided as-is, without warranties or guarantees of performance, fitness, compatibility, or uninterrupted operation. Use is at your own risk.
+
+    Do not rely on it for safety-critical, regulated, unattended, shared, or public-facing systems unless you have independently determined that use is appropriate. Damage caused by misuse or prolonged operation may affect warranty, support, or AppleCare coverage.
+    """
 }
 
 extension Notification.Name {
     static let nsmEventLogUpdated = Notification.Name("NSMEventLogUpdated")
+}
+
+enum ThermalPressureLevel: Int, CaseIterable {
+    case nominal = 0
+    case fair = 1
+    case serious = 2
+    case critical = 3
+
+    init(processState: ProcessInfo.ThermalState) {
+        switch processState {
+        case .nominal:
+            self = .nominal
+        case .fair:
+            self = .fair
+        case .serious:
+            self = .serious
+        case .critical:
+            self = .critical
+        @unknown default:
+            self = .serious
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .nominal:
+            return "Nominal"
+        case .fair:
+            return "Fair"
+        case .serious:
+            return "Serious"
+        case .critical:
+            return "Critical"
+        }
+    }
+}
+
+enum PowerSourceKind: String {
+    case ac = "AC Power"
+    case battery = "Battery Power"
+    case ups = "UPS Power"
+    case noBattery = "No Battery Detected"
+    case unknown = "Unknown"
+
+    var title: String {
+        rawValue
+    }
+
+    var isExternalPower: Bool {
+        switch self {
+        case .ac, .ups, .noBattery:
+            return true
+        case .battery, .unknown:
+            return false
+        }
+    }
+}
+
+struct PowerSourceSnapshot {
+    let source: PowerSourceKind
+    let batteryText: String
+}
+
+enum AppScopedAwakePolicy: Int, CaseIterable {
+    case anySelectedRunning = 0
+    case frontmostSelectedApp = 1
+
+    var title: String {
+        switch self {
+        case .anySelectedRunning:
+            return "Any Selected App Running"
+        case .frontmostSelectedApp:
+            return "Frontmost Selected App Only"
+        }
+    }
+}
+
+struct ScopedAppRecord {
+    let bundleIdentifier: String
+    let displayName: String
+    let isRunning: Bool
+    let isFrontmost: Bool
 }
 
 final class EventLog {
@@ -115,6 +213,17 @@ struct AppState {
     var launchAtBoot: Bool
     var serviceEnabled: Bool
     var preventSleep: Bool
+    var acPowerOnlyModeEnabled: Bool
+    var appScopedAwakeModeEnabled: Bool
+    var appScopedAwakePolicyRaw: Int
+    var appScopedBundleIdentifiers: [String]
+    var thermalGuardEnabled: Bool
+    var thermalGuardThresholdRaw: Int
+    var thermalGuardCooldownMinutes: Int
+    var thermalGuardCooldownUntil: Date?
+    var runtimeCapConfiguredMinutes: Int?
+    var runtimeCapEndDate: Date?
+    var riskWarningAcceptedVersion: String?
     var timerMinutes: Int?
     var timerEndDate: Date?
     var autoReenableAfterWake: Bool
@@ -131,6 +240,17 @@ final class AppStateStore {
         static let launchAtBoot = "launchAtBoot"
         static let serviceEnabled = "serviceEnabled"
         static let preventSleep = "preventSleep"
+        static let acPowerOnlyModeEnabled = "acPowerOnlyModeEnabled"
+        static let appScopedAwakeModeEnabled = "appScopedAwakeModeEnabled"
+        static let appScopedAwakePolicyRaw = "appScopedAwakePolicyRaw"
+        static let appScopedBundleIdentifiers = "appScopedBundleIdentifiers"
+        static let thermalGuardEnabled = "thermalGuardEnabled"
+        static let thermalGuardThresholdRaw = "thermalGuardThresholdRaw"
+        static let thermalGuardCooldownMinutes = "thermalGuardCooldownMinutes"
+        static let thermalGuardCooldownUntil = "thermalGuardCooldownUntil"
+        static let runtimeCapConfiguredMinutes = "runtimeCapConfiguredMinutes"
+        static let runtimeCapEndDate = "runtimeCapEndDate"
+        static let riskWarningAcceptedVersion = "riskWarningAcceptedVersion"
         static let timerMinutes = "timerMinutes"
         static let timerEndDate = "timerEndDate"
         static let autoReenableAfterWake = "autoReenableAfterWake"
@@ -149,6 +269,17 @@ final class AppStateStore {
             launchAtBoot: defaults.object(forKey: Key.launchAtBoot) as? Bool ?? true,
             serviceEnabled: defaults.object(forKey: Key.serviceEnabled) as? Bool ?? true,
             preventSleep: defaults.object(forKey: Key.preventSleep) as? Bool ?? true,
+            acPowerOnlyModeEnabled: defaults.object(forKey: Key.acPowerOnlyModeEnabled) as? Bool ?? false,
+            appScopedAwakeModeEnabled: defaults.object(forKey: Key.appScopedAwakeModeEnabled) as? Bool ?? false,
+            appScopedAwakePolicyRaw: defaults.object(forKey: Key.appScopedAwakePolicyRaw) as? Int ?? AppScopedAwakePolicy.anySelectedRunning.rawValue,
+            appScopedBundleIdentifiers: defaults.stringArray(forKey: Key.appScopedBundleIdentifiers) ?? [],
+            thermalGuardEnabled: defaults.object(forKey: Key.thermalGuardEnabled) as? Bool ?? true,
+            thermalGuardThresholdRaw: defaults.object(forKey: Key.thermalGuardThresholdRaw) as? Int ?? ThermalPressureLevel.serious.rawValue,
+            thermalGuardCooldownMinutes: defaults.object(forKey: Key.thermalGuardCooldownMinutes) as? Int ?? 15,
+            thermalGuardCooldownUntil: defaults.object(forKey: Key.thermalGuardCooldownUntil) as? Date,
+            runtimeCapConfiguredMinutes: defaults.object(forKey: Key.runtimeCapConfiguredMinutes) as? Int,
+            runtimeCapEndDate: defaults.object(forKey: Key.runtimeCapEndDate) as? Date,
+            riskWarningAcceptedVersion: defaults.string(forKey: Key.riskWarningAcceptedVersion),
             timerMinutes: defaults.object(forKey: Key.timerMinutes) as? Int,
             timerEndDate: defaults.object(forKey: Key.timerEndDate) as? Date,
             autoReenableAfterWake: defaults.object(forKey: Key.autoReenableAfterWake) as? Bool ?? true,
@@ -165,9 +296,20 @@ final class AppStateStore {
         defaults.set(state.launchAtBoot, forKey: Key.launchAtBoot)
         defaults.set(state.serviceEnabled, forKey: Key.serviceEnabled)
         defaults.set(state.preventSleep, forKey: Key.preventSleep)
+        defaults.set(state.acPowerOnlyModeEnabled, forKey: Key.acPowerOnlyModeEnabled)
+        defaults.set(state.appScopedAwakeModeEnabled, forKey: Key.appScopedAwakeModeEnabled)
+        defaults.set(state.appScopedAwakePolicyRaw, forKey: Key.appScopedAwakePolicyRaw)
+        defaults.set(state.appScopedBundleIdentifiers, forKey: Key.appScopedBundleIdentifiers)
+        defaults.set(state.thermalGuardEnabled, forKey: Key.thermalGuardEnabled)
+        defaults.set(state.thermalGuardThresholdRaw, forKey: Key.thermalGuardThresholdRaw)
+        defaults.set(state.thermalGuardCooldownMinutes, forKey: Key.thermalGuardCooldownMinutes)
         defaults.set(state.autoReenableAfterWake, forKey: Key.autoReenableAfterWake)
         defaults.set(state.serviceWatchdogEnabled, forKey: Key.serviceWatchdogEnabled)
 
+        setOptional(state.thermalGuardCooldownUntil, key: Key.thermalGuardCooldownUntil)
+        setOptional(state.runtimeCapConfiguredMinutes, key: Key.runtimeCapConfiguredMinutes)
+        setOptional(state.runtimeCapEndDate, key: Key.runtimeCapEndDate)
+        setOptional(state.riskWarningAcceptedVersion, key: Key.riskWarningAcceptedVersion)
         setOptional(state.timerMinutes, key: Key.timerMinutes)
         setOptional(state.timerEndDate, key: Key.timerEndDate)
         setOptional(state.shutdownTimerMinutes, key: Key.shutdownTimerMinutes)
@@ -186,6 +328,14 @@ final class AppStateStore {
     }
 
     private func setOptional(_ value: Date?, key: String) {
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    private func setOptional(_ value: String?, key: String) {
         if let value {
             defaults.set(value, forKey: key)
         } else {
@@ -572,9 +722,13 @@ struct ResourceSnapshot {
     let cpuText: String
     let memoryText: String
     let diskText: String
+    let powerSource: PowerSourceKind
+    let powerSourceText: String
     let batteryText: String
     let wifiText: String
     let bluetoothText: String
+    let thermalLevel: ThermalPressureLevel
+    let thermalText: String
     let uptimeText: String
 }
 
@@ -595,20 +749,37 @@ final class ResourceMonitor {
         let cpuText = cpuUsageText()
         let memoryText = memoryUsageText()
         let diskText = diskUsageText()
-        let batteryText = batteryStatusText()
+        let powerSnapshot = powerSourceSnapshot()
+        let powerSource = powerSnapshot.source
+        let powerSourceText = "Power Source: \(powerSource.title)"
+        let batteryText = powerSnapshot.batteryText
         let wifiText = wifiStatusText()
         let bluetoothText = bluetoothStatusText()
+        let thermalLevel = thermalPressureLevel()
+        let thermalText = "Thermal Pressure: \(thermalLevel.title)"
         let uptimeText = uptimeTextValue()
 
         return ResourceSnapshot(
             cpuText: cpuText,
             memoryText: memoryText,
             diskText: diskText,
+            powerSource: powerSource,
+            powerSourceText: powerSourceText,
             batteryText: batteryText,
             wifiText: wifiText,
             bluetoothText: bluetoothText,
+            thermalLevel: thermalLevel,
+            thermalText: thermalText,
             uptimeText: uptimeText
         )
+    }
+
+    func thermalPressureLevel() -> ThermalPressureLevel {
+        ThermalPressureLevel(processState: ProcessInfo.processInfo.thermalState)
+    }
+
+    func powerSourceKind() -> PowerSourceKind {
+        powerSourceSnapshot().source
     }
 
     func wifiStatusText() -> String {
@@ -787,21 +958,58 @@ final class ResourceMonitor {
         }
     }
 
-    private func batteryStatusText() -> String {
+    private func powerSourceSnapshot() -> PowerSourceSnapshot {
         let result = CommandRunner.run("/usr/bin/pmset", args: ["-g", "batt"])
         guard result.status == 0 else {
-            return "Battery: N/A"
+            return PowerSourceSnapshot(source: .unknown, batteryText: "Battery: N/A")
         }
 
         let lines = result.stdout
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
 
-        if let detail = lines.dropFirst().first(where: { $0.contains("%") }) {
-            return "Battery: \(detail)"
+        let source = parsePowerSourceKind(lines: lines)
+
+        if lines.contains(where: { $0.lowercased().contains("no batteries") }) {
+            return PowerSourceSnapshot(source: source == .unknown ? .noBattery : source, batteryText: "Battery: Not Present")
         }
 
-        return "Battery: N/A"
+        if let detail = lines.dropFirst().first(where: { $0.contains("%") }) {
+            return PowerSourceSnapshot(source: source, batteryText: "Battery: \(detail)")
+        }
+
+        switch source {
+        case .ac, .ups:
+            return PowerSourceSnapshot(source: source, batteryText: "Battery: External Power")
+        case .battery:
+            return PowerSourceSnapshot(source: source, batteryText: "Battery: Battery Power")
+        case .noBattery:
+            return PowerSourceSnapshot(source: source, batteryText: "Battery: Not Present")
+        case .unknown:
+            return PowerSourceSnapshot(source: source, batteryText: "Battery: N/A")
+        }
+    }
+
+    private func parsePowerSourceKind(lines: [String]) -> PowerSourceKind {
+        let firstLine = lines.first?.lowercased() ?? ""
+
+        if firstLine.contains("ac power") {
+            return .ac
+        }
+
+        if firstLine.contains("battery power") {
+            return .battery
+        }
+
+        if firstLine.contains("ups power") {
+            return .ups
+        }
+
+        if firstLine.contains("no batteries") || lines.contains(where: { $0.lowercased().contains("no batteries") }) {
+            return .noBattery
+        }
+
+        return .unknown
     }
 
     private func uptimeTextValue() -> String {
@@ -1200,6 +1408,16 @@ enum DiagnosticsBuilder {
         lines.append("- serviceRunning: \(serviceRunning)")
         lines.append("- preventSleep: \(state.preventSleep)")
         lines.append("- sleepAssertionActive: \(sleepActive)")
+        lines.append("- acPowerOnlyModeEnabled: \(state.acPowerOnlyModeEnabled)")
+        lines.append("- appScopedAwakeModeEnabled: \(state.appScopedAwakeModeEnabled)")
+        lines.append("- appScopedAwakePolicy: \(AppScopedAwakePolicy(rawValue: state.appScopedAwakePolicyRaw)?.title ?? AppScopedAwakePolicy.anySelectedRunning.title)")
+        lines.append("- appScopedBundleIdentifiers: \(state.appScopedBundleIdentifiers.isEmpty ? "none" : state.appScopedBundleIdentifiers.joined(separator: ", "))")
+        lines.append("- thermalGuardEnabled: \(state.thermalGuardEnabled)")
+        lines.append("- thermalGuardThreshold: \(ThermalPressureLevel(rawValue: state.thermalGuardThresholdRaw)?.title ?? ThermalPressureLevel.serious.title)")
+        lines.append("- thermalGuardCooldownMinutes: \(state.thermalGuardCooldownMinutes)")
+        lines.append("- thermalGuardCooldownUntil: \(state.thermalGuardCooldownUntil.map(PowerScheduler.userFacingDate) ?? "none")")
+        lines.append("- runtimeCapConfiguredMinutes: \(state.runtimeCapConfiguredMinutes.map(String.init) ?? "none")")
+        lines.append("- runtimeCapEndDate: \(state.runtimeCapEndDate.map(PowerScheduler.userFacingDate) ?? "none")")
         lines.append("- autoReenableAfterWake: \(state.autoReenableAfterWake)")
         lines.append("- serviceWatchdogEnabled: \(state.serviceWatchdogEnabled)")
         lines.append("- sleepTimerEnd: \(state.timerEndDate.map(PowerScheduler.userFacingDate) ?? "none")")
@@ -1273,6 +1491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var state: AppState
 
     private var sleepTimer: Timer?
+    private var runtimeCapTimer: Timer?
     private var shutdownTimer: Timer?
     private var enableProtectionTimer: Timer?
     private var disableProtectionTimer: Timer?
@@ -1290,6 +1509,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var desktopServiceButton: NSButton?
     private var desktopSleepButton: NSButton?
     private var desktopUpdateButton: NSButton?
+    private var desktopACPowerOnlyButton: NSButton?
+    private var desktopAppScopedButton: NSButton?
+    private var desktopThermalGuardButton: NSButton?
     private var desktopServiceCard: MetricCardView?
     private var desktopProtectionCard: MetricCardView?
     private var desktopVersionCard: MetricCardView?
@@ -1299,6 +1521,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let openDesktopModeItem = NSMenuItem(title: "Open N.S.M. Desktop Experience", action: #selector(openDesktopExperience), keyEquivalent: "")
     private let checkUpdatesItem = NSMenuItem(title: "Check for Updates", action: #selector(checkForUpdatesOrInstall), keyEquivalent: "")
     private let openWikiItem = NSMenuItem(title: "Open GitHub Wiki", action: #selector(openWiki), keyEquivalent: "")
+    private let warningItem = NSMenuItem(title: AppMeta.riskWarningMenuTitle, action: nil, keyEquivalent: "")
+    private let warningMenu = NSMenu(title: AppMeta.riskWarningMenuTitle)
+    private let warningLineOneItem = NSMenuItem(title: AppMeta.riskWarningMenuLines[0], action: nil, keyEquivalent: "")
+    private let warningLineTwoItem = NSMenuItem(title: AppMeta.riskWarningMenuLines[1], action: nil, keyEquivalent: "")
+    private let warningLineThreeItem = NSMenuItem(title: AppMeta.riskWarningMenuLines[2], action: nil, keyEquivalent: "")
+    private let warningLineFourItem = NSMenuItem(title: AppMeta.riskWarningMenuLines[3], action: nil, keyEquivalent: "")
+    private let warningReviewItem = NSMenuItem(title: "Review Full Notice...", action: #selector(showUsageWarningFromMenu), keyEquivalent: "")
 
     private let resourceItem = NSMenuItem(title: "Mini Resource Monitor", action: nil, keyEquivalent: "")
     private let resourceMenu = NSMenu(title: "Mini Resource Monitor")
@@ -1308,12 +1537,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let resourceBatteryItem = NSMenuItem(title: "Battery: --", action: nil, keyEquivalent: "")
     private let resourceWiFiItem = NSMenuItem(title: "Wi-Fi: --", action: nil, keyEquivalent: "")
     private let resourceBluetoothItem = NSMenuItem(title: "Bluetooth: --", action: nil, keyEquivalent: "")
+    private let resourceThermalItem = NSMenuItem(title: "Thermal Pressure: --", action: nil, keyEquivalent: "")
     private let resourceUptimeItem = NSMenuItem(title: "Uptime: --", action: nil, keyEquivalent: "")
 
     private let serviceToggleItem = NSMenuItem(title: "Enable Service", action: #selector(toggleService), keyEquivalent: "")
     private let sleepToggleItem = NSMenuItem(title: "Prevent Sleep", action: #selector(toggleSleepPrevention), keyEquivalent: "")
     private let autoWakeToggleItem = NSMenuItem(title: "Auto-Reenable After Wake", action: #selector(toggleAutoReenableAfterWake), keyEquivalent: "")
     private let watchdogToggleItem = NSMenuItem(title: "Service Watchdog", action: #selector(toggleServiceWatchdog), keyEquivalent: "")
+    private let acPowerOnlyItem = NSMenuItem(title: "AC Power Only Mode", action: nil, keyEquivalent: "")
+    private let acPowerOnlyMenu = NSMenu(title: "AC Power Only Mode")
+    private let acPowerOnlyStatusItem = NSMenuItem(title: "Status: --", action: nil, keyEquivalent: "")
+    private let acPowerOnlyToggleItem = NSMenuItem(title: "Enable AC Power Only Mode", action: #selector(toggleACPowerOnlyMode), keyEquivalent: "")
+    private let acPowerOnlyReviewItem = NSMenuItem(title: "Review Power Source Status...", action: #selector(showACPowerOnlyStatus), keyEquivalent: "")
+    private let appScopedItem = NSMenuItem(title: "App-Scoped Awake Mode", action: nil, keyEquivalent: "")
+    private let appScopedMenu = NSMenu(title: "App-Scoped Awake Mode")
+    private let appScopedStatusItem = NSMenuItem(title: "Status: --", action: nil, keyEquivalent: "")
+    private let appScopedToggleItem = NSMenuItem(title: "Enable App-Scoped Awake Mode", action: #selector(toggleAppScopedAwakeMode), keyEquivalent: "")
+    private let appScopedPolicyItem = NSMenuItem(title: "Match Policy", action: nil, keyEquivalent: "")
+    private let appScopedPolicyMenu = NSMenu(title: "Match Policy")
+    private let appScopedAddFrontmostItem = NSMenuItem(title: "Add Current Frontmost App", action: #selector(addFrontmostAppToScopedAwakeList), keyEquivalent: "")
+    private let appScopedAddRunningItem = NSMenuItem(title: "Add Running App", action: nil, keyEquivalent: "")
+    private let appScopedAddRunningMenu = NSMenu(title: "Add Running App")
+    private let appScopedRemoveItem = NSMenuItem(title: "Remove Selected App", action: nil, keyEquivalent: "")
+    private let appScopedRemoveMenu = NSMenu(title: "Remove Selected App")
+    private let appScopedClearItem = NSMenuItem(title: "Clear Selected Apps", action: #selector(clearScopedAwakeApps), keyEquivalent: "")
+    private let appScopedReviewItem = NSMenuItem(title: "Review Scoped App Status...", action: #selector(showAppScopedAwakeStatus), keyEquivalent: "")
+    private var appScopedPolicyOptionItems: [AppScopedAwakePolicy: NSMenuItem] = [:]
+    private let thermalGuardItem = NSMenuItem(title: "Thermal Guard", action: nil, keyEquivalent: "")
+    private let thermalGuardMenu = NSMenu(title: "Thermal Guard")
+    private let thermalGuardStatusItem = NSMenuItem(title: "Status: --", action: nil, keyEquivalent: "")
+    private let thermalGuardToggleItem = NSMenuItem(title: "Enable Thermal Guard", action: #selector(toggleThermalGuard), keyEquivalent: "")
+    private let thermalGuardThresholdItem = NSMenuItem(title: "Trip Threshold", action: nil, keyEquivalent: "")
+    private let thermalGuardThresholdMenu = NSMenu(title: "Trip Threshold")
+    private let thermalGuardCooldownItem = NSMenuItem(title: "Cooldown", action: nil, keyEquivalent: "")
+    private let thermalGuardCooldownMenu = NSMenu(title: "Cooldown")
+    private let thermalGuardClearCooldownItem = NSMenuItem(title: "Clear Cooldown Now", action: #selector(clearThermalGuardCooldownManually), keyEquivalent: "")
+    private let thermalGuardReviewItem = NSMenuItem(title: "Review Thermal Guard Status...", action: #selector(showThermalGuardStatus), keyEquivalent: "")
+    private var thermalGuardThresholdOptionItems: [ThermalPressureLevel: NSMenuItem] = [:]
+    private var thermalGuardCooldownOptionItems: [Int: NSMenuItem] = [:]
+    private let runtimeCapItem = NSMenuItem(title: "Max Runtime Cap", action: nil, keyEquivalent: "")
+    private let runtimeCapMenu = NSMenu(title: "Max Runtime Cap")
+    private let runtimeCapStatusItem = NSMenuItem(title: "Status: Off", action: nil, keyEquivalent: "")
+    private let runtimeCapOffItem = NSMenuItem(title: "Off", action: #selector(disableRuntimeCap), keyEquivalent: "")
+    private let runtimeCapSetUntilItem = NSMenuItem(title: "Set Until Date/Time...", action: #selector(promptRuntimeCapUntilDate), keyEquivalent: "")
+    private var runtimeCapOptionItems: [Int: NSMenuItem] = [:]
 
     private let sleepTimerItem = NSMenuItem(title: "Sleep Timer", action: nil, keyEquivalent: "")
     private let sleepTimerMenu = NSMenu(title: "Sleep Timer")
@@ -1345,7 +1612,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let providedByItem = NSMenuItem(title: "Provided BY: WayneTechLab.com", action: #selector(openProviderWebsite), keyEquivalent: "")
 
     private let sleepTimerOptions: [Int] = [30, 60, 120, 240]
+    private let runtimeCapOptions: [Int] = [120, 240, 480]
     private let shutdownTimerOptions: [Int] = [15, 30, 60, 120]
+    private let appScopedPolicyOptions: [AppScopedAwakePolicy] = [.anySelectedRunning, .frontmostSelectedApp]
+    private let thermalGuardThresholdOptions: [ThermalPressureLevel] = [.fair, .serious, .critical]
+    private let thermalGuardCooldownOptions: [Int] = [5, 15, 30, 60]
 
     private var workspaceObservers: [NSObjectProtocol] = []
     private var distributedObservers: [NSObjectProtocol] = []
@@ -1370,6 +1641,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         synchronizeLaunchAtBootState()
+        guard presentFirstLaunchWarningIfNeeded() else {
+            return
+        }
         applyStateOnLaunch()
         refreshMenuState()
 
@@ -1381,6 +1655,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         EventLog.shared.add("\(AppMeta.shortName) is terminating.")
 
         sleepTimer?.invalidate()
+        runtimeCapTimer?.invalidate()
         shutdownTimer?.invalidate()
         enableProtectionTimer?.invalidate()
         disableProtectionTimer?.invalidate()
@@ -1408,15 +1683,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         enableScheduleInfoItem.isEnabled = false
         disableScheduleInfoItem.isEnabled = false
 
+        buildWarningMenu()
         buildResourceMenu()
+        buildACPowerOnlyMenu()
+        buildAppScopedMenu()
+        buildThermalGuardMenu()
+        buildRuntimeCapMenu()
 
         openDesktopModeItem.target = self
         checkUpdatesItem.target = self
         openWikiItem.target = self
+        warningReviewItem.target = self
         serviceToggleItem.target = self
         sleepToggleItem.target = self
         autoWakeToggleItem.target = self
         watchdogToggleItem.target = self
+        acPowerOnlyToggleItem.target = self
+        acPowerOnlyReviewItem.target = self
+        appScopedToggleItem.target = self
+        appScopedAddFrontmostItem.target = self
+        appScopedClearItem.target = self
+        appScopedReviewItem.target = self
+        thermalGuardToggleItem.target = self
+        thermalGuardClearCooldownItem.target = self
+        thermalGuardReviewItem.target = self
+        runtimeCapOffItem.target = self
+        runtimeCapSetUntilItem.target = self
         launchAtBootItem.target = self
         restartServiceItem.target = self
         runSelfTestItem.target = self
@@ -1448,12 +1740,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(openDesktopModeItem)
         menu.addItem(checkUpdatesItem)
         menu.addItem(openWikiItem)
+        menu.addItem(warningItem)
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(resourceItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(serviceToggleItem)
         menu.addItem(sleepToggleItem)
         menu.addItem(autoWakeToggleItem)
         menu.addItem(watchdogToggleItem)
+        menu.addItem(acPowerOnlyItem)
+        menu.addItem(appScopedItem)
+        menu.addItem(thermalGuardItem)
+        menu.addItem(runtimeCapItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(sleepTimerItem)
         menu.addItem(scheduledActionsItem)
@@ -1478,13 +1776,133 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.statusItem = statusItem
     }
 
+    private func buildWarningMenu() {
+        warningMenu.removeAllItems()
+
+        for item in [warningLineOneItem, warningLineTwoItem, warningLineThreeItem, warningLineFourItem] {
+            item.isEnabled = false
+            warningMenu.addItem(item)
+        }
+
+        warningMenu.addItem(NSMenuItem.separator())
+        warningMenu.addItem(warningReviewItem)
+        warningItem.submenu = warningMenu
+    }
+
     private func buildResourceMenu() {
-        for item in [resourceCPUItem, resourceMemoryItem, resourceDiskItem, resourceBatteryItem, resourceWiFiItem, resourceBluetoothItem, resourceUptimeItem] {
+        for item in [resourceCPUItem, resourceMemoryItem, resourceDiskItem, resourceBatteryItem, resourceWiFiItem, resourceBluetoothItem, resourceThermalItem, resourceUptimeItem] {
             item.isEnabled = false
             resourceMenu.addItem(item)
         }
 
         resourceItem.submenu = resourceMenu
+    }
+
+    private func buildACPowerOnlyMenu() {
+        acPowerOnlyMenu.removeAllItems()
+
+        acPowerOnlyStatusItem.isEnabled = false
+        acPowerOnlyMenu.addItem(acPowerOnlyStatusItem)
+        acPowerOnlyMenu.addItem(NSMenuItem.separator())
+        acPowerOnlyMenu.addItem(acPowerOnlyToggleItem)
+        acPowerOnlyMenu.addItem(NSMenuItem.separator())
+        acPowerOnlyMenu.addItem(acPowerOnlyReviewItem)
+        acPowerOnlyItem.submenu = acPowerOnlyMenu
+    }
+
+    private func buildAppScopedMenu() {
+        appScopedMenu.removeAllItems()
+        appScopedPolicyMenu.removeAllItems()
+        appScopedAddRunningMenu.removeAllItems()
+        appScopedRemoveMenu.removeAllItems()
+        appScopedPolicyOptionItems.removeAll()
+
+        appScopedStatusItem.isEnabled = false
+        appScopedMenu.addItem(appScopedStatusItem)
+        appScopedMenu.addItem(NSMenuItem.separator())
+        appScopedMenu.addItem(appScopedToggleItem)
+
+        for policy in appScopedPolicyOptions {
+            let item = NSMenuItem(title: policy.title, action: #selector(selectAppScopedAwakePolicy(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: policy.rawValue)
+            appScopedPolicyMenu.addItem(item)
+            appScopedPolicyOptionItems[policy] = item
+        }
+
+        appScopedPolicyItem.submenu = appScopedPolicyMenu
+        appScopedMenu.addItem(appScopedPolicyItem)
+        appScopedMenu.addItem(NSMenuItem.separator())
+        appScopedMenu.addItem(appScopedAddFrontmostItem)
+        appScopedAddRunningItem.submenu = appScopedAddRunningMenu
+        appScopedMenu.addItem(appScopedAddRunningItem)
+        appScopedRemoveItem.submenu = appScopedRemoveMenu
+        appScopedMenu.addItem(appScopedRemoveItem)
+        appScopedMenu.addItem(appScopedClearItem)
+        appScopedMenu.addItem(NSMenuItem.separator())
+        appScopedMenu.addItem(appScopedReviewItem)
+        appScopedItem.submenu = appScopedMenu
+    }
+
+    private func buildThermalGuardMenu() {
+        thermalGuardMenu.removeAllItems()
+        thermalGuardThresholdMenu.removeAllItems()
+        thermalGuardCooldownMenu.removeAllItems()
+        thermalGuardThresholdOptionItems.removeAll()
+        thermalGuardCooldownOptionItems.removeAll()
+
+        thermalGuardStatusItem.isEnabled = false
+        thermalGuardMenu.addItem(thermalGuardStatusItem)
+        thermalGuardMenu.addItem(NSMenuItem.separator())
+        thermalGuardMenu.addItem(thermalGuardToggleItem)
+
+        for level in thermalGuardThresholdOptions {
+            let item = NSMenuItem(title: level.title, action: #selector(selectThermalGuardThreshold(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: level.rawValue)
+            thermalGuardThresholdMenu.addItem(item)
+            thermalGuardThresholdOptionItems[level] = item
+        }
+
+        thermalGuardThresholdItem.submenu = thermalGuardThresholdMenu
+        thermalGuardMenu.addItem(thermalGuardThresholdItem)
+
+        for minutes in thermalGuardCooldownOptions {
+            let item = NSMenuItem(title: "\(minutes) Minutes", action: #selector(selectThermalGuardCooldown(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: minutes)
+            thermalGuardCooldownMenu.addItem(item)
+            thermalGuardCooldownOptionItems[minutes] = item
+        }
+
+        thermalGuardCooldownItem.submenu = thermalGuardCooldownMenu
+        thermalGuardMenu.addItem(thermalGuardCooldownItem)
+        thermalGuardMenu.addItem(thermalGuardClearCooldownItem)
+        thermalGuardMenu.addItem(NSMenuItem.separator())
+        thermalGuardMenu.addItem(thermalGuardReviewItem)
+        thermalGuardItem.submenu = thermalGuardMenu
+    }
+
+    private func buildRuntimeCapMenu() {
+        runtimeCapMenu.removeAllItems()
+        runtimeCapOptionItems.removeAll()
+
+        runtimeCapStatusItem.isEnabled = false
+        runtimeCapMenu.addItem(runtimeCapStatusItem)
+        runtimeCapMenu.addItem(NSMenuItem.separator())
+        runtimeCapMenu.addItem(runtimeCapOffItem)
+
+        for minutes in runtimeCapOptions {
+            let item = NSMenuItem(title: displayTitle(forMinutes: minutes), action: #selector(selectRuntimeCapOption(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: minutes)
+            runtimeCapMenu.addItem(item)
+            runtimeCapOptionItems[minutes] = item
+        }
+
+        runtimeCapMenu.addItem(NSMenuItem.separator())
+        runtimeCapMenu.addItem(runtimeCapSetUntilItem)
+        runtimeCapItem.submenu = runtimeCapMenu
     }
 
     private func buildSleepTimerMenu() {
@@ -1721,6 +2139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let desktopServiceButton = makeDesktopActionButton(title: "Enable Service", action: #selector(desktopToggleService))
         let desktopSleepButton = makeDesktopActionButton(title: "Enable Sleep Prevention", action: #selector(desktopToggleSleep))
         let desktopUpdateButton = makeDesktopActionButton(title: "Check for Updates", action: #selector(checkForUpdatesOrInstall))
+        let desktopACPowerOnlyButton = makeDesktopActionButton(title: "Enable AC Power Only", action: #selector(desktopToggleACPowerOnlyMode))
+        let desktopAppScopedButton = makeDesktopActionButton(title: "Enable App-Scoped Mode", action: #selector(desktopToggleAppScopedAwakeMode))
+        let desktopThermalGuardButton = makeDesktopActionButton(title: "Disable Thermal Guard", action: #selector(desktopToggleThermalGuard))
+        let openEventLogButton = makeDesktopActionButton(title: "Open Event Log", action: #selector(openEventLog))
+        let openServiceLogButton = makeDesktopActionButton(title: "Open Service Log", action: #selector(openServiceLog))
         let exportDiagnosticsButton = makeDesktopActionButton(title: "Export Diagnostics", action: #selector(exportDiagnostics))
         let closeDesktopButton = makeDesktopActionButton(title: "Close Desktop Mode", action: #selector(closeDesktopExperience))
         closeDesktopButton.bezelColor = NSColor(calibratedWhite: 1.0, alpha: 0.16)
@@ -1729,6 +2152,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             desktopServiceButton,
             desktopSleepButton,
             desktopUpdateButton,
+            desktopUpdateButton,
+            desktopACPowerOnlyButton,
+            desktopAppScopedButton,
+            desktopThermalGuardButton,
+            openEventLogButton,
+            openServiceLogButton,
             exportDiagnosticsButton,
             closeDesktopButton
         ])
@@ -1797,6 +2226,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.desktopServiceButton = desktopServiceButton
         self.desktopSleepButton = desktopSleepButton
         self.desktopUpdateButton = desktopUpdateButton
+        self.desktopACPowerOnlyButton = desktopACPowerOnlyButton
+        self.desktopAppScopedButton = desktopAppScopedButton
+        self.desktopThermalGuardButton = desktopThermalGuardButton
         self.desktopServiceCard = desktopServiceCard
         self.desktopProtectionCard = desktopProtectionCard
         self.desktopVersionCard = desktopVersionCard
@@ -1811,11 +2243,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         desktopServiceButton?.title = serviceController.isRunning ? "Disable Service" : "Enable Service"
-        desktopSleepButton?.title = blocker.isActive ? "Disable Sleep Prevention" : "Enable Sleep Prevention"
+        desktopACPowerOnlyButton?.title = state.acPowerOnlyModeEnabled ? "Disable AC Power Only" : "Enable AC Power Only"
+        desktopAppScopedButton?.title = state.appScopedAwakeModeEnabled ? "Disable App-Scoped Mode" : "Enable App-Scoped Mode"
+        desktopThermalGuardButton?.title = state.thermalGuardEnabled ? "Disable Thermal Guard" : "Enable Thermal Guard"
         desktopUpdateButton?.title = updateStatus.buttonTitle
         desktopUpdateButton?.isEnabled = !updateStatus.isChecking
 
         let snapshot = resourceSnapshot ?? resourceMonitor.sample()
+        let thermalGuardCooldownText = thermalGuardCooldownRemainingText()
+        let acPowerOnlyBlocked = state.acPowerOnlyModeEnabled && !snapshot.powerSource.isExternalPower
+        let appScopedBlocked = appScopedAwakeBlocksManualEnable()
+
+        desktopSleepButton?.title = blocker.isActive
+            ? "Disable Sleep Prevention"
+            : (
+                thermalGuardCooldownText.map { "Cooling Down (\($0) left)" }
+                ?? (acPowerOnlyBlocked ? "AC Power Required" : (appScopedBlocked ? "Waiting for App Match" : "Enable Sleep Prevention"))
+            )
+        desktopSleepButton?.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !appScopedBlocked)
 
         let sleepTimerText: String
         if let endDate = state.timerEndDate, let minutes = state.timerMinutes {
@@ -1851,36 +2296,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         desktopUpdateCard?.update(value: updateStatus.desktopValue, color: updateStatus.accentColor)
 
-        let summaryLines = [
-            "Version: v\(AppMeta.currentVersion) (build \(AppMeta.currentBuild))",
-            "Provided BY: \(AppMeta.providerName)",
-            "",
-            "Control Plane",
-            "- Service: \(serviceController.isRunning ? "Running" : "Stopped")",
-            "- Sleep Prevention: \(blocker.isActive ? "On" : "Off")",
-            "- Launch at Boot: \(state.launchAtBoot ? "Enabled" : "Disabled")",
-            "- Auto-Reenable After Wake: \(state.autoReenableAfterWake ? "Enabled" : "Disabled")",
-            "- Service Watchdog: \(state.serviceWatchdogEnabled ? "Enabled" : "Disabled")",
-            "- Update Status: \(updateStatus.menuTitle)",
-            "",
-            "Timers + Scheduling",
-            "- Sleep Timer: \(sleepTimerText)",
-            "- Shutdown Timer: \(shutdownTimerText)",
-            "- Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
-            "- Enable Protection At: \(state.enableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
-            "- Disable Protection At: \(state.disableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")",
-            "",
-            "Live Resource Monitor",
-            "- \(snapshot.cpuText)",
-            "- \(snapshot.memoryText)",
-            "- \(snapshot.diskText)",
-            "- \(snapshot.batteryText)",
-            "- Wi-Fi: \(snapshot.wifiText)",
-            "- Bluetooth: \(snapshot.bluetoothText)",
-            "- \(snapshot.uptimeText)"
-        ]
-
-        desktopSummaryTextView.string = summaryLines.joined(separator: "\n")
+        var lines: [String] = []
+        lines.append("Version: v\(AppMeta.currentVersion) (build \(AppMeta.currentBuild))")
+        lines.append("Provided BY: \(AppMeta.providerName)")
+        lines.append("")
+        lines.append("Control Plane")
+        lines.append("- Service: \(serviceController.isRunning ? "Running" : "Stopped")")
+        lines.append("- Sleep Prevention: \(blocker.isActive ? "On" : "Off")")
+        lines.append("- Power Source: \(snapshot.powerSource.title)")
+        lines.append("- Launch at Boot: \(state.launchAtBoot ? "Enabled" : "Disabled")")
+        lines.append("- Auto-Reenable After Wake: \(state.autoReenableAfterWake ? "Enabled" : "Disabled")")
+        lines.append("- Service Watchdog: \(state.serviceWatchdogEnabled ? "Enabled" : "Disabled")")
+        lines.append("- Update Status: \(updateStatus.menuTitle)")
+        lines.append("- AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? (snapshot.powerSource.isExternalPower ? "Enabled (ready)" : "Enabled (blocking on \(snapshot.powerSource.title))") : "Disabled")")
+        lines.append("- App-Scoped Awake Mode: \(appScopedAwakeStatusText())")
+        lines.append("- App-Scoped Policy: \(appScopedAwakePolicy().title)")
+        lines.append("- App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "None" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))")
+        lines.append("- Thermal Guard: \(state.thermalGuardEnabled ? "Enabled" : "Disabled")")
+        lines.append("- Thermal Guard Threshold: \(thermalGuardThreshold().title)")
+        lines.append("- Thermal Guard Cooldown: \(thermalGuardCooldownText.map { "\($0) left" } ?? "Ready")")
+        lines.append("- Max Runtime Cap: \(runtimeCapStatusText())")
+        lines.append("")
+        lines.append("Timers + Scheduling")
+        lines.append("- Sleep Timer: \(sleepTimerText)")
+        lines.append("- Shutdown Timer: \(shutdownTimerText)")
+        lines.append("- Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
+        lines.append("- Enable Protection At: \(state.enableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
+        lines.append("- Disable Protection At: \(state.disableAtDate.map(PowerScheduler.userFacingDate) ?? "Not Scheduled")")
+        lines.append("")
+        lines.append("Mini Resource Monitor")
+        lines.append("- \(snapshot.cpuText)")
+        lines.append("- \(snapshot.memoryText)")
+        lines.append("- \(snapshot.diskText)")
+        lines.append("- \(snapshot.powerSourceText)")
+        lines.append("- \(snapshot.batteryText)")
+        lines.append("- Wi-Fi: \(snapshot.wifiText)")
+        lines.append("- Bluetooth: \(snapshot.bluetoothText)")
+        lines.append("- \(snapshot.thermalText)")
+        lines.append("- \(snapshot.uptimeText)")
+        desktopSummaryTextView.string = lines.joined(separator: "\n")
 
         let recentEvents = EventLog.shared.snapshot().suffix(140)
         desktopEventLogTextView.string = recentEvents.isEmpty
@@ -2018,6 +2472,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         watchWorkspace(NSWorkspace.sessionDidBecomeActiveNotification, message: "User session became active.")
         watchWorkspace(NSWorkspace.sessionDidResignActiveNotification, message: "User session resigned activity.")
 
+        for name in [
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification,
+            NSWorkspace.didActivateApplicationNotification
+        ] {
+            let token = workspaceCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.refreshMenuState()
+            }
+            workspaceObservers.append(token)
+        }
+
         let distributedCenter = DistributedNotificationCenter.default()
 
         func watchDistributed(_ rawName: String, _ message: String) {
@@ -2084,7 +2549,505 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stateStore.save(state)
     }
 
+    private func thermalGuardThreshold() -> ThermalPressureLevel {
+        ThermalPressureLevel(rawValue: state.thermalGuardThresholdRaw) ?? .serious
+    }
+
+    private func presentACPowerRequiredAlert(currentSource: PowerSourceKind) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "External Power Required"
+        alert.informativeText = """
+        AC Power Only Mode is enabled, so sleep prevention can only run while the Mac is on external power.
+
+        Current power source: \(currentSource.title). Reconnect the charger or disable AC Power Only Mode to continue.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        _ = alert.runModal()
+    }
+
+    private func evaluateACPowerOnlyMode(using snapshot: ResourceSnapshot) {
+        guard state.acPowerOnlyModeEnabled else {
+            return
+        }
+
+        guard blocker.isActive else {
+            return
+        }
+
+        guard !snapshot.powerSource.isExternalPower else {
+            return
+        }
+
+        blocker.deactivate()
+        state.preventSleep = false
+        clearSleepTimer(logChange: false)
+        handleProtectionDisabledForRuntimeCap()
+        stateStore.save(state)
+
+        EventLog.shared.add(
+            "AC Power Only Mode disabled sleep prevention because current power source is \(snapshot.powerSource.title)."
+        )
+    }
+
+    private func appScopedAwakePolicy() -> AppScopedAwakePolicy {
+        AppScopedAwakePolicy(rawValue: state.appScopedAwakePolicyRaw) ?? .anySelectedRunning
+    }
+
+    private func normalizedScopedAwakeBundleIdentifiers(_ bundleIdentifiers: [String]) -> [String] {
+        var seen: Set<String> = []
+        var ordered: [String] = []
+
+        for bundleIdentifier in bundleIdentifiers {
+            let trimmed = bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else {
+                continue
+            }
+
+            seen.insert(trimmed)
+            ordered.append(trimmed)
+        }
+
+        return ordered
+    }
+
+    private func scopedAwakeCandidateApplications() -> [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications
+            .filter { app in
+                guard let bundleIdentifier = app.bundleIdentifier, !bundleIdentifier.isEmpty else {
+                    return false
+                }
+
+                return bundleIdentifier != Bundle.main.bundleIdentifier && app.activationPolicy != .prohibited
+            }
+            .sorted { lhs, rhs in
+                let left = (lhs.localizedName ?? lhs.bundleIdentifier ?? "").localizedCaseInsensitiveCompare(rhs.localizedName ?? rhs.bundleIdentifier ?? "")
+                return left == .orderedAscending
+            }
+    }
+
+    private func scopedAwakeDisplayName(for application: NSRunningApplication) -> String {
+        if let localizedName = application.localizedName, !localizedName.isEmpty {
+            return localizedName
+        }
+
+        if let bundleIdentifier = application.bundleIdentifier, !bundleIdentifier.isEmpty {
+            return bundleIdentifier
+        }
+
+        return application.bundleURL?.deletingPathExtension().lastPathComponent ?? "Unknown App"
+    }
+
+    private func scopedAwakeDisplayName(forBundleIdentifier bundleIdentifier: String) -> String {
+        if let runningApplication = scopedAwakeCandidateApplications().first(where: { $0.bundleIdentifier == bundleIdentifier }) {
+            return scopedAwakeDisplayName(for: runningApplication)
+        }
+
+        return bundleIdentifier
+    }
+
+    private func selectedScopedAppRecords() -> [ScopedAppRecord] {
+        let selectedBundleIdentifiers = normalizedScopedAwakeBundleIdentifiers(state.appScopedBundleIdentifiers)
+        let runningApplications = scopedAwakeCandidateApplications()
+        let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+
+        return selectedBundleIdentifiers.map { bundleIdentifier in
+            let runningMatches = runningApplications.filter { $0.bundleIdentifier == bundleIdentifier }
+            let displayName = runningMatches.first.map(scopedAwakeDisplayName(for:)) ?? scopedAwakeDisplayName(forBundleIdentifier: bundleIdentifier)
+
+            return ScopedAppRecord(
+                bundleIdentifier: bundleIdentifier,
+                displayName: displayName,
+                isRunning: !runningMatches.isEmpty,
+                isFrontmost: frontmostBundleIdentifier == bundleIdentifier
+            )
+        }
+    }
+
+    private func matchedScopedAppRecords(from records: [ScopedAppRecord]) -> [ScopedAppRecord] {
+        switch appScopedAwakePolicy() {
+        case .anySelectedRunning:
+            return records.filter(\.isRunning)
+        case .frontmostSelectedApp:
+            return records.filter(\.isFrontmost)
+        }
+    }
+
+    private func appScopedAwakeStatusText(records: [ScopedAppRecord]? = nil) -> String {
+        let currentRecords = records ?? selectedScopedAppRecords()
+
+        guard state.appScopedAwakeModeEnabled else {
+            return "Disabled"
+        }
+
+        guard !currentRecords.isEmpty else {
+            return "Enabled • No apps selected"
+        }
+
+        let matchedRecords = matchedScopedAppRecords(from: currentRecords)
+        if !matchedRecords.isEmpty {
+            let names = matchedRecords.map(\.displayName).joined(separator: ", ")
+            return "Active • \(names)"
+        }
+
+        return "Armed • Waiting for \(appScopedAwakePolicy() == .frontmostSelectedApp ? "frontmost selected app" : "selected app")"
+    }
+
+    private func appScopedAwakeBlocksManualEnable(records: [ScopedAppRecord]? = nil) -> Bool {
+        let currentRecords = records ?? selectedScopedAppRecords()
+
+        guard state.appScopedAwakeModeEnabled, !currentRecords.isEmpty else {
+            return false
+        }
+
+        return matchedScopedAppRecords(from: currentRecords).isEmpty
+    }
+
+    private func evaluateAppScopedAwakeMode() {
+        guard state.appScopedAwakeModeEnabled else {
+            return
+        }
+
+        let records = selectedScopedAppRecords()
+        guard !records.isEmpty else {
+            return
+        }
+
+        let matchedRecords = matchedScopedAppRecords(from: records)
+        if matchedRecords.isEmpty {
+            guard blocker.isActive else {
+                return
+            }
+
+            blocker.deactivate()
+            state.preventSleep = false
+            clearSleepTimer(logChange: false)
+            handleProtectionDisabledForRuntimeCap()
+            stateStore.save(state)
+
+            EventLog.shared.add("App-Scoped Awake Mode disabled sleep prevention because no selected app matches.")
+            return
+        }
+
+        guard !blocker.isActive else {
+            return
+        }
+
+        guard ensureProtectionEnabled(showThermalAlert: false, logBlockedReason: false) else {
+            return
+        }
+
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode enabled sleep prevention for \(matchedRecords.map(\.displayName).joined(separator: ", ")).")
+    }
+
+    private func thermalGuardCooldownMinutes() -> Int {
+        max(1, state.thermalGuardCooldownMinutes)
+    }
+
+    private func thermalGuardCooldownRemainingInterval(now: Date = Date()) -> TimeInterval? {
+        guard let cooldownUntil = state.thermalGuardCooldownUntil else {
+            return nil
+        }
+
+        let remaining = cooldownUntil.timeIntervalSince(now)
+        return remaining > 0 ? remaining : nil
+    }
+
+    private func thermalGuardCooldownRemainingText(now: Date = Date()) -> String? {
+        guard let remaining = thermalGuardCooldownRemainingInterval(now: now) else {
+            return nil
+        }
+
+        let minutes = Int(ceil(remaining / 60.0))
+        if minutes >= 60 {
+            let hours = Int(ceil(Double(minutes) / 60.0))
+            return "\(hours)h"
+        }
+
+        return "\(max(1, minutes))m"
+    }
+
+    private func clearExpiredThermalGuardCooldownIfNeeded(now: Date = Date()) {
+        guard let cooldownUntil = state.thermalGuardCooldownUntil, cooldownUntil <= now else {
+            return
+        }
+
+        state.thermalGuardCooldownUntil = nil
+        stateStore.save(state)
+        EventLog.shared.add("Thermal Guard cooldown ended.")
+    }
+
+    private func presentThermalGuardCooldownAlert(until: Date, currentLevel: ThermalPressureLevel) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Thermal Guard Active"
+        alert.informativeText = """
+        Sleep prevention is temporarily blocked because macOS reports thermal pressure at \(currentLevel.title).
+
+        Cooling down until \(PowerScheduler.userFacingDate(until)). You can re-enable protection after cooldown ends, or disable Thermal Guard if you accept the risk.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        _ = alert.runModal()
+    }
+
+    private func canEnableProtection(showThermalAlert: Bool, logBlockedReason: Bool = true) -> Bool {
+        clearExpiredThermalGuardCooldownIfNeeded()
+
+        let powerSource = resourceMonitor.powerSourceKind()
+        if state.acPowerOnlyModeEnabled, !powerSource.isExternalPower {
+            if logBlockedReason {
+                EventLog.shared.add("AC Power Only Mode blocked sleep prevention because current power source is \(powerSource.title).")
+            }
+
+            if showThermalAlert {
+                presentACPowerRequiredAlert(currentSource: powerSource)
+            }
+
+            return false
+        }
+
+        guard state.thermalGuardEnabled, let cooldownUntil = state.thermalGuardCooldownUntil, cooldownUntil > Date() else {
+            return true
+        }
+
+        let currentLevel = resourceMonitor.thermalPressureLevel()
+        if logBlockedReason {
+            EventLog.shared.add("Thermal Guard blocked sleep prevention until \(PowerScheduler.userFacingDate(cooldownUntil)).")
+        }
+
+        if showThermalAlert {
+            presentThermalGuardCooldownAlert(until: cooldownUntil, currentLevel: currentLevel)
+        }
+
+        return false
+    }
+
+    private func evaluateThermalGuard(using snapshot: ResourceSnapshot, now: Date = Date()) {
+        clearExpiredThermalGuardCooldownIfNeeded(now: now)
+
+        guard state.thermalGuardEnabled else {
+            return
+        }
+
+        guard blocker.isActive else {
+            return
+        }
+
+        guard snapshot.thermalLevel.rawValue >= thermalGuardThreshold().rawValue else {
+            return
+        }
+
+        let cooldownUntil = now.addingTimeInterval(TimeInterval(thermalGuardCooldownMinutes() * 60))
+        blocker.deactivate()
+        state.preventSleep = false
+        clearSleepTimer(logChange: false)
+        handleProtectionDisabledForRuntimeCap()
+        state.thermalGuardCooldownUntil = cooldownUntil
+        stateStore.save(state)
+
+        EventLog.shared.add(
+            "Thermal Guard triggered at \(snapshot.thermalLevel.title). Sleep prevention disabled until \(PowerScheduler.userFacingDate(cooldownUntil))."
+        )
+    }
+
+    private func runtimeCapRemainingInterval(now: Date = Date()) -> TimeInterval? {
+        guard let endDate = state.runtimeCapEndDate else {
+            return nil
+        }
+
+        let remaining = endDate.timeIntervalSince(now)
+        return remaining > 0 ? remaining : nil
+    }
+
+    private func runtimeCapRemainingText(now: Date = Date()) -> String? {
+        guard let remaining = runtimeCapRemainingInterval(now: now) else {
+            return nil
+        }
+
+        let totalMinutes = Int(ceil(remaining / 60.0))
+        if totalMinutes >= 60 {
+            let hours = totalMinutes / 60
+            let minutes = totalMinutes % 60
+            return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
+        }
+
+        return "\(max(1, totalMinutes))m"
+    }
+
+    private func runtimeCapStatusText(now: Date = Date()) -> String {
+        if blocker.isActive, let remaining = runtimeCapRemainingText(now: now) {
+            return "Active • \(remaining) left"
+        }
+
+        if blocker.isActive, let endDate = state.runtimeCapEndDate, endDate > now {
+            return "Active • until \(PowerScheduler.userFacingDate(endDate))"
+        }
+
+        if blocker.isActive, let minutes = state.runtimeCapConfiguredMinutes {
+            return "Active • \(displayTitle(forMinutes: minutes)) cap"
+        }
+
+        if let minutes = state.runtimeCapConfiguredMinutes {
+            return "Armed for next enable • \(displayTitle(forMinutes: minutes))"
+        }
+
+        if let endDate = state.runtimeCapEndDate, endDate > now {
+            return "Deadline set • \(PowerScheduler.userFacingDate(endDate))"
+        }
+
+        return "Off"
+    }
+
+    private func clearRuntimeCap(logChange: Bool) {
+        runtimeCapTimer?.invalidate()
+        runtimeCapTimer = nil
+        state.runtimeCapConfiguredMinutes = nil
+        state.runtimeCapEndDate = nil
+        stateStore.save(state)
+
+        if logChange {
+            EventLog.shared.add("Max Runtime Cap turned off.")
+        }
+    }
+
+    private func handleProtectionDisabledForRuntimeCap() {
+        runtimeCapTimer?.invalidate()
+        runtimeCapTimer = nil
+        var didChangeState = false
+
+        if state.runtimeCapConfiguredMinutes != nil, state.runtimeCapEndDate != nil {
+            state.runtimeCapEndDate = nil
+            didChangeState = true
+        }
+
+        if didChangeState {
+            stateStore.save(state)
+        }
+    }
+
+    private func scheduleRuntimeCapTimer(endDate: Date, logMessage: String?) {
+        runtimeCapTimer?.invalidate()
+
+        let interval = endDate.timeIntervalSinceNow
+        if interval <= 0 {
+            handleRuntimeCapFired()
+            return
+        }
+
+        if state.runtimeCapEndDate != endDate {
+            state.runtimeCapEndDate = endDate
+            stateStore.save(state)
+        }
+
+        if let logMessage {
+            EventLog.shared.add(logMessage)
+        }
+
+        runtimeCapTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            self?.handleRuntimeCapFired()
+        }
+
+        if let runtimeCapTimer {
+            RunLoop.main.add(runtimeCapTimer, forMode: .common)
+        }
+    }
+
+    private func armRuntimeCapIfNeeded(reason: String) {
+        if let minutes = state.runtimeCapConfiguredMinutes {
+            if state.runtimeCapEndDate == nil {
+                let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+                scheduleRuntimeCapTimer(
+                    endDate: endDate,
+                    logMessage: "Max Runtime Cap armed for \(displayTitle(forMinutes: minutes)) (\(reason))."
+                )
+            } else if let endDate = state.runtimeCapEndDate {
+                if endDate <= Date() {
+                    handleRuntimeCapFired()
+                } else if runtimeCapTimer == nil {
+                    scheduleRuntimeCapTimer(endDate: endDate, logMessage: nil)
+                }
+            }
+            return
+        }
+
+        guard let endDate = state.runtimeCapEndDate else {
+            return
+        }
+
+        if endDate <= Date() {
+            if blocker.isActive {
+                handleRuntimeCapFired()
+            } else {
+                state.runtimeCapEndDate = nil
+                stateStore.save(state)
+                EventLog.shared.add("Max Runtime Cap deadline expired and was cleared.")
+            }
+            return
+        }
+
+        if runtimeCapTimer == nil {
+            scheduleRuntimeCapTimer(endDate: endDate, logMessage: nil)
+        }
+    }
+
+    private func normalizeRuntimeCapState() {
+        if !blocker.isActive, state.runtimeCapConfiguredMinutes != nil, state.runtimeCapEndDate != nil {
+            runtimeCapTimer?.invalidate()
+            runtimeCapTimer = nil
+            state.runtimeCapEndDate = nil
+            stateStore.save(state)
+            return
+        }
+
+        guard let endDate = state.runtimeCapEndDate else {
+            return
+        }
+
+        if endDate <= Date() {
+            if blocker.isActive {
+                handleRuntimeCapFired()
+                return
+            }
+
+            runtimeCapTimer?.invalidate()
+            runtimeCapTimer = nil
+            state.runtimeCapEndDate = nil
+            stateStore.save(state)
+            EventLog.shared.add("Max Runtime Cap deadline expired while protection was off.")
+            return
+        }
+
+        if blocker.isActive, runtimeCapTimer == nil {
+            scheduleRuntimeCapTimer(endDate: endDate, logMessage: nil)
+        }
+    }
+
+    private func handleRuntimeCapFired() {
+        runtimeCapTimer?.invalidate()
+        runtimeCapTimer = nil
+
+        blocker.deactivate()
+        state.preventSleep = false
+        clearSleepTimer(logChange: false)
+        state.runtimeCapEndDate = nil
+        stateStore.save(state)
+
+        EventLog.shared.add("Max Runtime Cap reached. Sleep prevention disabled.")
+        refreshMenuState()
+    }
+
     private func refreshMenuState() {
+        let snapshot = resourceMonitor.sample()
+        evaluateACPowerOnlyMode(using: snapshot)
+        evaluateThermalGuard(using: snapshot)
+        normalizeRuntimeCapState()
+        evaluateAppScopedAwakeMode()
+
         titleItem.title = "\(AppMeta.appName) • v\(AppMeta.currentVersion)"
         openDesktopModeItem.title = desktopWindow == nil
             ? "Open \(AppMeta.shortName) Desktop Experience"
@@ -2099,10 +3062,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         watchdogToggleItem.state = state.serviceWatchdogEnabled ? .on : .off
         launchAtBootItem.state = state.launchAtBoot ? .on : .off
 
-        sleepToggleItem.isEnabled = serviceController.isRunning || !blocker.isActive
+        let thermalGuardCooldownText = thermalGuardCooldownRemainingText()
+        let acPowerOnlyBlocked = state.acPowerOnlyModeEnabled && !snapshot.powerSource.isExternalPower
+        let appScopedBlocked = appScopedAwakeBlocksManualEnable()
+        sleepToggleItem.title = thermalGuardCooldownText != nil
+            ? "Prevent Sleep (Cooling Down)"
+            : (acPowerOnlyBlocked ? "Prevent Sleep (AC Power Required)" : (appScopedBlocked ? "Prevent Sleep (Waiting for App)" : "Prevent Sleep"))
+        sleepToggleItem.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !appScopedBlocked)
 
-        let snapshot = resourceMonitor.sample()
         updateResourceItems(snapshot)
+        updateACPowerOnlyMenuState(snapshot)
+        updateAppScopedMenuState()
+        updateThermalGuardMenuState(snapshot)
+        updateRuntimeCapMenuState()
         refreshDesktopWindowState(resourceSnapshot: snapshot)
         updateSleepTimerMenuState()
         updateShutdownTimerMenuState()
@@ -2114,10 +3086,143 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         resourceCPUItem.title = snap.cpuText
         resourceMemoryItem.title = snap.memoryText
         resourceDiskItem.title = snap.diskText
-        resourceBatteryItem.title = snap.batteryText
+        resourceBatteryItem.title = "\(snap.powerSourceText) • \(snap.batteryText.replacingOccurrences(of: "Battery: ", with: ""))"
         resourceWiFiItem.title = "Wi-Fi: \(snap.wifiText)"
         resourceBluetoothItem.title = "Bluetooth: \(snap.bluetoothText)"
+        resourceThermalItem.title = snap.thermalText
         resourceUptimeItem.title = snap.uptimeText
+    }
+
+    private func updateACPowerOnlyMenuState(_ snapshot: ResourceSnapshot) {
+        let blocked = state.acPowerOnlyModeEnabled && !snapshot.powerSource.isExternalPower
+
+        acPowerOnlyItem.title = blocked ? "AC Power Only Mode (\(snapshot.powerSource.title))" : "AC Power Only Mode"
+        acPowerOnlyStatusItem.title = state.acPowerOnlyModeEnabled
+            ? "Status: Enabled • Current \(snapshot.powerSource.title) • \(snapshot.powerSource.isExternalPower ? "Protection allowed" : "Protection blocked")"
+            : "Status: Disabled • Current \(snapshot.powerSource.title)"
+        acPowerOnlyToggleItem.state = state.acPowerOnlyModeEnabled ? .on : .off
+    }
+
+    private func updateAppScopedMenuState() {
+        let records = selectedScopedAppRecords()
+        let matchedRecords = matchedScopedAppRecords(from: records)
+
+        appScopedItem.title = matchedRecords.isEmpty
+            ? "App-Scoped Awake Mode"
+            : "App-Scoped Awake Mode (\(matchedRecords.map(\.displayName).joined(separator: ", ")))"
+        appScopedStatusItem.title = "Status: \(appScopedAwakeStatusText(records: records))"
+        appScopedToggleItem.state = state.appScopedAwakeModeEnabled ? .on : .off
+        appScopedPolicyItem.title = "Match Policy (\(appScopedAwakePolicy().title))"
+
+        for (policy, item) in appScopedPolicyOptionItems {
+            item.state = policy == appScopedAwakePolicy() ? .on : .off
+        }
+
+        if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+           let bundleIdentifier = frontmostApplication.bundleIdentifier,
+           bundleIdentifier != Bundle.main.bundleIdentifier,
+           !state.appScopedBundleIdentifiers.contains(bundleIdentifier) {
+            appScopedAddFrontmostItem.title = "Add Current Frontmost App (\(scopedAwakeDisplayName(for: frontmostApplication)))"
+            appScopedAddFrontmostItem.isEnabled = true
+        } else {
+            appScopedAddFrontmostItem.title = "Add Current Frontmost App"
+            appScopedAddFrontmostItem.isEnabled = false
+        }
+
+        appScopedAddRunningMenu.removeAllItems()
+        let selectedBundleIdentifiers = Set(state.appScopedBundleIdentifiers)
+        let addCandidates = scopedAwakeCandidateApplications().filter { application in
+            guard let bundleIdentifier = application.bundleIdentifier else {
+                return false
+            }
+
+            return !selectedBundleIdentifiers.contains(bundleIdentifier)
+        }
+
+        if addCandidates.isEmpty {
+            let emptyItem = NSMenuItem(title: "No running apps available", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            appScopedAddRunningMenu.addItem(emptyItem)
+            appScopedAddRunningItem.isEnabled = false
+        } else {
+            for application in addCandidates {
+                guard let bundleIdentifier = application.bundleIdentifier else {
+                    continue
+                }
+
+                let item = NSMenuItem(title: scopedAwakeDisplayName(for: application), action: #selector(addRunningAppToScopedAwakeList(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = bundleIdentifier
+                appScopedAddRunningMenu.addItem(item)
+            }
+            appScopedAddRunningItem.isEnabled = true
+        }
+
+        appScopedRemoveMenu.removeAllItems()
+        if records.isEmpty {
+            let emptyItem = NSMenuItem(title: "No selected apps", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            appScopedRemoveMenu.addItem(emptyItem)
+            appScopedRemoveItem.isEnabled = false
+            appScopedClearItem.isEnabled = false
+        } else {
+            for record in records {
+                let item = NSMenuItem(title: "\(record.displayName) (\(record.bundleIdentifier))", action: #selector(removeScopedAwakeApp(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = record.bundleIdentifier
+                appScopedRemoveMenu.addItem(item)
+            }
+            appScopedRemoveItem.isEnabled = true
+            appScopedClearItem.isEnabled = true
+        }
+    }
+
+    private func addScopedAwakeBundleIdentifier(_ bundleIdentifier: String, displayName: String) {
+        state.appScopedBundleIdentifiers.append(bundleIdentifier)
+        state.appScopedBundleIdentifiers = normalizedScopedAwakeBundleIdentifiers(state.appScopedBundleIdentifiers)
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode added \(displayName).")
+        refreshMenuState()
+    }
+
+    private func updateThermalGuardMenuState(_ snapshot: ResourceSnapshot) {
+        let threshold = thermalGuardThreshold()
+        let cooldownText = thermalGuardCooldownRemainingText()
+
+        thermalGuardItem.title = cooldownText.map { "Thermal Guard (\($0) left)" } ?? "Thermal Guard"
+        thermalGuardStatusItem.title = state.thermalGuardEnabled
+            ? "Status: \(snapshot.thermalLevel.title) • Threshold \(threshold.title) • \(cooldownText.map { "Cooldown \($0) left" } ?? "Ready")"
+            : "Status: Disabled • Current \(snapshot.thermalLevel.title)"
+        thermalGuardToggleItem.state = state.thermalGuardEnabled ? .on : .off
+        thermalGuardCooldownItem.title = "Cooldown (\(thermalGuardCooldownMinutes())m)"
+        thermalGuardClearCooldownItem.isEnabled = cooldownText != nil
+
+        for (level, item) in thermalGuardThresholdOptionItems {
+            item.state = level == threshold ? .on : .off
+        }
+
+        for (minutes, item) in thermalGuardCooldownOptionItems {
+            item.state = minutes == thermalGuardCooldownMinutes() ? .on : .off
+        }
+    }
+
+    private func updateRuntimeCapMenuState() {
+        let remainingText = blocker.isActive ? runtimeCapRemainingText() : nil
+        runtimeCapItem.title = remainingText.map { "Max Runtime Cap (\($0) left)" } ?? "Max Runtime Cap"
+        runtimeCapStatusItem.title = "Status: \(runtimeCapStatusText())"
+        runtimeCapOffItem.state = (state.runtimeCapConfiguredMinutes == nil && state.runtimeCapEndDate == nil) ? .on : .off
+
+        for (minutes, item) in runtimeCapOptionItems {
+            item.state = minutes == state.runtimeCapConfiguredMinutes ? .on : .off
+        }
+
+        if let endDate = state.runtimeCapEndDate, state.runtimeCapConfiguredMinutes == nil {
+            runtimeCapSetUntilItem.title = "Set Until Date/Time... (Ends \(PowerScheduler.userFacingDate(endDate)))"
+            runtimeCapSetUntilItem.state = .on
+        } else {
+            runtimeCapSetUntilItem.title = "Set Until Date/Time..."
+            runtimeCapSetUntilItem.state = .off
+        }
     }
 
     private func updateSleepTimerMenuState() {
@@ -2197,13 +3302,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @discardableResult
-    private func ensureProtectionEnabled() -> Bool {
+    private func ensureProtectionEnabled(showThermalAlert: Bool = false, logBlockedReason: Bool = true) -> Bool {
+        guard canEnableProtection(showThermalAlert: showThermalAlert, logBlockedReason: logBlockedReason) else {
+            state.preventSleep = false
+            return false
+        }
+
         guard ensureServiceRunning() else {
             return false
         }
 
         let enabled = blocker.activate(reason: "\(AppMeta.shortName) protection enabled")
         state.preventSleep = enabled
+        if enabled {
+            armRuntimeCapIfNeeded(reason: "protection enabled")
+        }
         return enabled
     }
 
@@ -2333,6 +3446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         state.preventSleep = false
         state.timerMinutes = nil
         state.timerEndDate = nil
+        handleProtectionDisabledForRuntimeCap()
         stateStore.save(state)
 
         EventLog.shared.add("Sleep timer elapsed. Sleep prevention disabled.")
@@ -2489,6 +3603,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         blocker.deactivate()
         state.preventSleep = false
         clearSleepTimer(logChange: false)
+        handleProtectionDisabledForRuntimeCap()
         stateStore.save(state)
 
         EventLog.shared.add("Scheduled disable protection executed.")
@@ -2531,17 +3646,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return alert.runModal() == .alertFirstButtonReturn ? picker.dateValue : nil
     }
 
-    private func displayTitle(forMinutes minutes: Int) -> String {
-        switch minutes {
-        case 60:
-            return "1 Hour"
-        case 120:
-            return "2 Hours"
-        case 240:
-            return "4 Hours"
-        default:
-            return "\(minutes) Minutes"
+    private func presentFirstLaunchWarningIfNeeded() -> Bool {
+        guard state.riskWarningAcceptedVersion != AppMeta.riskWarningVersion else {
+            return true
         }
+
+        return presentUsageWarning(requireAcknowledgement: true)
+    }
+
+    @discardableResult
+    private func presentUsageWarning(requireAcknowledgement: Bool) -> Bool {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = AppMeta.riskWarningTitle
+        alert.informativeText = AppMeta.riskWarningMessage
+        alert.alertStyle = .warning
+
+        if requireAcknowledgement {
+            alert.addButton(withTitle: "I Accept the Risk")
+            alert.addButton(withTitle: "Quit")
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                state.riskWarningAcceptedVersion = AppMeta.riskWarningVersion
+                stateStore.save(state)
+                EventLog.shared.add("Safety/warranty notice accepted: version \(AppMeta.riskWarningVersion).")
+                return true
+            }
+
+            EventLog.shared.add("Safety/warranty notice declined on first launch.")
+            NSApplication.shared.terminate(nil)
+            return false
+        }
+
+        alert.addButton(withTitle: "OK")
+        _ = alert.runModal()
+        EventLog.shared.add("Safety/warranty notice reviewed from the menu.")
+        return true
+    }
+
+    private func displayTitle(forMinutes minutes: Int) -> String {
+        if minutes == 60 {
+            return "1 Hour"
+        }
+
+        if minutes > 60, minutes % 60 == 0 {
+            return "\(minutes / 60) Hours"
+        }
+
+        return "\(minutes) Minutes"
     }
 
     @discardableResult
@@ -2611,6 +3764,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             blocker.deactivate()
             state.preventSleep = false
             clearSleepTimer(logChange: false)
+            handleProtectionDisabledForRuntimeCap()
 
             state.autoReenableAfterWake = false
             state.serviceWatchdogEnabled = false
@@ -2629,6 +3783,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             blocker.deactivate()
             state.preventSleep = false
             clearSleepTimer(logChange: false)
+            handleProtectionDisabledForRuntimeCap()
 
             state.serviceEnabled = false
             serviceController.stop()
@@ -2717,6 +3872,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSWorkspace.shared.open(AppMeta.wikiURL)
     }
 
+    @objc private func desktopToggleACPowerOnlyMode() {
+        toggleACPowerOnlyMode()
+    }
+
+    @objc private func desktopToggleAppScopedAwakeMode() {
+        toggleAppScopedAwakeMode()
+    }
+
+    @objc private func desktopToggleThermalGuard() {
+        toggleThermalGuard()
+    }
+
     @objc private func toggleLaunchAtBoot() {
         let desired = !state.launchAtBoot
         if launchAtBootManager.setEnabled(desired) {
@@ -2737,6 +3904,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if blocker.isActive {
                 blocker.deactivate()
                 state.preventSleep = false
+                handleProtectionDisabledForRuntimeCap()
             }
 
             clearSleepTimer(logChange: true)
@@ -2757,6 +3925,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             blocker.deactivate()
             state.preventSleep = false
             clearSleepTimer(logChange: false)
+            handleProtectionDisabledForRuntimeCap()
         }
 
         if restarted, state.preventSleep {
@@ -2772,9 +3941,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             blocker.deactivate()
             state.preventSleep = false
             clearSleepTimer(logChange: true)
+            handleProtectionDisabledForRuntimeCap()
         } else {
-            guard ensureProtectionEnabled() else {
-                EventLog.shared.add("Cannot enable sleep prevention because service is not running.")
+            guard ensureProtectionEnabled(showThermalAlert: true) else {
+                EventLog.shared.add("Cannot enable sleep prevention because service is not running or Thermal Guard is cooling down.")
                 refreshMenuState()
                 return
             }
@@ -2799,6 +3969,181 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshMenuState()
     }
 
+    @objc private func toggleACPowerOnlyMode() {
+        state.acPowerOnlyModeEnabled.toggle()
+        stateStore.save(state)
+        EventLog.shared.add("AC Power Only Mode \(state.acPowerOnlyModeEnabled ? "enabled" : "disabled").")
+        refreshMenuState()
+    }
+
+    @objc private func toggleAppScopedAwakeMode() {
+        state.appScopedAwakeModeEnabled.toggle()
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode \(state.appScopedAwakeModeEnabled ? "enabled" : "disabled").")
+        refreshMenuState()
+    }
+
+    @objc private func selectAppScopedAwakePolicy(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber,
+              let policy = AppScopedAwakePolicy(rawValue: wrapped.intValue) else {
+            return
+        }
+
+        state.appScopedAwakePolicyRaw = policy.rawValue
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode policy set to \(policy.title).")
+        refreshMenuState()
+    }
+
+    @objc private func addFrontmostAppToScopedAwakeList() {
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              let bundleIdentifier = application.bundleIdentifier,
+              bundleIdentifier != Bundle.main.bundleIdentifier else {
+            EventLog.shared.add("App-Scoped Awake Mode could not add the current frontmost app.")
+            refreshMenuState()
+            return
+        }
+
+        addScopedAwakeBundleIdentifier(bundleIdentifier, displayName: scopedAwakeDisplayName(for: application))
+    }
+
+    @objc private func addRunningAppToScopedAwakeList(_ sender: NSMenuItem) {
+        guard let bundleIdentifier = sender.representedObject as? String else {
+            return
+        }
+
+        addScopedAwakeBundleIdentifier(bundleIdentifier, displayName: scopedAwakeDisplayName(forBundleIdentifier: bundleIdentifier))
+    }
+
+    @objc private func removeScopedAwakeApp(_ sender: NSMenuItem) {
+        guard let bundleIdentifier = sender.representedObject as? String else {
+            return
+        }
+
+        state.appScopedBundleIdentifiers.removeAll { $0 == bundleIdentifier }
+        state.appScopedBundleIdentifiers = normalizedScopedAwakeBundleIdentifiers(state.appScopedBundleIdentifiers)
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode removed \(scopedAwakeDisplayName(forBundleIdentifier: bundleIdentifier)).")
+        refreshMenuState()
+    }
+
+    @objc private func clearScopedAwakeApps() {
+        guard !state.appScopedBundleIdentifiers.isEmpty else {
+            return
+        }
+
+        state.appScopedBundleIdentifiers = []
+        stateStore.save(state)
+        EventLog.shared.add("App-Scoped Awake Mode cleared all selected apps.")
+        refreshMenuState()
+    }
+
+    @objc private func toggleThermalGuard() {
+        state.thermalGuardEnabled.toggle()
+
+        if !state.thermalGuardEnabled {
+            state.thermalGuardCooldownUntil = nil
+        }
+
+        stateStore.save(state)
+        EventLog.shared.add("Thermal Guard \(state.thermalGuardEnabled ? "enabled" : "disabled").")
+        refreshMenuState()
+    }
+
+    @objc private func selectThermalGuardThreshold(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber,
+              let level = ThermalPressureLevel(rawValue: wrapped.intValue) else {
+            return
+        }
+
+        state.thermalGuardThresholdRaw = level.rawValue
+        stateStore.save(state)
+        EventLog.shared.add("Thermal Guard threshold set to \(level.title).")
+        refreshMenuState()
+    }
+
+    @objc private func selectThermalGuardCooldown(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber else {
+            return
+        }
+
+        let minutes = max(1, wrapped.intValue)
+        state.thermalGuardCooldownMinutes = minutes
+        stateStore.save(state)
+        EventLog.shared.add("Thermal Guard cooldown set to \(minutes) minutes.")
+        refreshMenuState()
+    }
+
+    @objc private func clearThermalGuardCooldownManually() {
+        guard state.thermalGuardCooldownUntil != nil else {
+            return
+        }
+
+        state.thermalGuardCooldownUntil = nil
+        stateStore.save(state)
+        EventLog.shared.add("Thermal Guard cooldown cleared by user.")
+        refreshMenuState()
+    }
+
+    @objc private func disableRuntimeCap() {
+        clearRuntimeCap(logChange: true)
+        refreshMenuState()
+    }
+
+    @objc private func selectRuntimeCapOption(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber else {
+            return
+        }
+
+        let minutes = max(1, wrapped.intValue)
+        state.runtimeCapConfiguredMinutes = minutes
+        stateStore.save(state)
+
+        if blocker.isActive {
+            let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+            scheduleRuntimeCapTimer(
+                endDate: endDate,
+                logMessage: "Max Runtime Cap set for \(displayTitle(forMinutes: minutes))."
+            )
+        } else {
+            runtimeCapTimer?.invalidate()
+            runtimeCapTimer = nil
+            state.runtimeCapEndDate = nil
+            stateStore.save(state)
+            EventLog.shared.add("Max Runtime Cap armed for next enable: \(displayTitle(forMinutes: minutes)).")
+        }
+
+        refreshMenuState()
+    }
+
+    @objc private func promptRuntimeCapUntilDate() {
+        guard let date = promptForDateTime(
+            title: "Max Runtime Cap",
+            message: "Pick the latest date and time that sleep prevention is allowed to remain active.",
+            defaultDate: Date().addingTimeInterval(4 * 3600)
+        ) else {
+            return
+        }
+
+        state.runtimeCapConfiguredMinutes = nil
+        stateStore.save(state)
+
+        if blocker.isActive {
+            scheduleRuntimeCapTimer(
+                endDate: date,
+                logMessage: "Max Runtime Cap deadline set for \(PowerScheduler.userFacingDate(date))."
+            )
+        } else {
+            runtimeCapTimer?.invalidate()
+            runtimeCapTimer = nil
+            state.runtimeCapEndDate = date
+            stateStore.save(state)
+            EventLog.shared.add("Max Runtime Cap deadline armed for \(PowerScheduler.userFacingDate(date)).")
+        }
+
+        refreshMenuState()
+    }
+
     @objc private func selectSleepTimerOption(_ sender: NSMenuItem) {
         guard let wrapped = sender.representedObject as? NSNumber else {
             return
@@ -2812,8 +4157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
-        guard ensureProtectionEnabled() else {
-            EventLog.shared.add("Cannot set sleep timer because service/protection could not be enabled.")
+        guard ensureProtectionEnabled(showThermalAlert: true) else {
+            EventLog.shared.add("Cannot set sleep timer because service/protection could not be enabled or Thermal Guard is cooling down.")
             refreshMenuState()
             return
         }
@@ -2958,6 +4303,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         checks.append("Launch at boot effective: \(launchAtBootManager.isEnabled())")
         checks.append("Service running: \(serviceController.isRunning)")
         checks.append("Sleep prevention active: \(blocker.isActive)")
+        checks.append("AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? "Enabled" : "Disabled")")
+        checks.append("Power source: \(resourceMonitor.powerSourceKind().title)")
+        checks.append("App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "Enabled" : "Disabled")")
+        checks.append("App-Scoped Policy: \(appScopedAwakePolicy().title)")
+        checks.append("App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "None" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))")
+        checks.append("Thermal Guard: \(state.thermalGuardEnabled ? "Enabled" : "Disabled")")
+        checks.append("Thermal pressure: \(resourceMonitor.thermalPressureLevel().title)")
+        checks.append("Max Runtime Cap: \(runtimeCapStatusText())")
         checks.append("Wi-Fi: \(resourceMonitor.wifiStatusText())")
         checks.append("Bluetooth: \(resourceMonitor.bluetoothStatusText())")
 
@@ -2980,6 +4333,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "Provided BY: \(AppMeta.providerName)",
             "Service running: \(serviceController.isRunning)",
             "Sleep prevention active: \(blocker.isActive)",
+            "AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? "enabled" : "disabled")",
+            "Power Source: \(resourceMonitor.powerSourceKind().title)",
+            "App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "enabled" : "disabled")",
+            "App-Scoped Policy: \(appScopedAwakePolicy().title)",
+            "App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "none" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))",
+            "Thermal Guard: \(state.thermalGuardEnabled ? "enabled" : "disabled")",
+            "Thermal Guard threshold: \(thermalGuardThreshold().title)",
+            "Thermal Guard cooldown: \(thermalGuardCooldownRemainingText() ?? "ready")",
+            "Max Runtime Cap: \(runtimeCapStatusText())",
             "Launch at boot: \(state.launchAtBoot)",
             "Auto-reenable after wake: \(state.autoReenableAfterWake)",
             "Service watchdog: \(state.serviceWatchdogEnabled)",
@@ -2988,7 +4350,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "Shutdown timer: \(state.shutdownEndDate.map(PowerScheduler.userFacingDate) ?? "off")",
             "Wake/Power On: \(state.wakeScheduleDate.map(PowerScheduler.userFacingDate) ?? "none")",
             "Wi-Fi: \(resourceMonitor.wifiStatusText())",
-            "Bluetooth: \(resourceMonitor.bluetoothStatusText())"
+            "Bluetooth: \(resourceMonitor.bluetoothStatusText())",
+            "Thermal Pressure: \(resourceMonitor.thermalPressureLevel().title)"
         ].joined(separator: "\n")
 
         let pasteboard = NSPasteboard.general
@@ -2996,6 +4359,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pasteboard.setString(statusText, forType: .string)
 
         EventLog.shared.add("Status copied to clipboard.")
+    }
+
+    @objc private func showUsageWarningFromMenu() {
+        _ = presentUsageWarning(requireAcknowledgement: false)
+    }
+
+    @objc private func showACPowerOnlyStatus() {
+        let snapshot = resourceMonitor.sample()
+        let alert = NSAlert()
+        alert.messageText = "AC Power Only Mode"
+        alert.informativeText = [
+            "AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? "Enabled" : "Disabled")",
+            "Current Power Source: \(snapshot.powerSource.title)",
+            "Protection Allowed Right Now: \(snapshot.powerSource.isExternalPower ? "Yes" : "No")",
+            snapshot.batteryText
+        ].joined(separator: "\n")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+
+        EventLog.shared.add("AC Power Only Mode status reviewed.")
+    }
+
+    @objc private func showAppScopedAwakeStatus() {
+        let records = selectedScopedAppRecords()
+        let matchedRecords = matchedScopedAppRecords(from: records)
+        let selectedSummary = records.isEmpty
+            ? "None"
+            : records.map { record in
+                let stateText = record.isFrontmost ? "frontmost" : (record.isRunning ? "running" : "not running")
+                return "\(record.displayName) (\(record.bundleIdentifier)) - \(stateText)"
+            }.joined(separator: "\n")
+
+        let alert = NSAlert()
+        alert.messageText = "App-Scoped Awake Mode"
+        alert.informativeText = [
+            "Mode: \(state.appScopedAwakeModeEnabled ? "Enabled" : "Disabled")",
+            "Policy: \(appScopedAwakePolicy().title)",
+            "Current Status: \(appScopedAwakeStatusText(records: records))",
+            "Matched Apps: \(matchedRecords.isEmpty ? "None" : matchedRecords.map(\.displayName).joined(separator: ", "))",
+            "Selected Apps:",
+            selectedSummary
+        ].joined(separator: "\n")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+
+        EventLog.shared.add("App-Scoped Awake Mode status reviewed.")
+    }
+
+    @objc private func showThermalGuardStatus() {
+        clearExpiredThermalGuardCooldownIfNeeded()
+
+        let currentLevel = resourceMonitor.thermalPressureLevel()
+        let alert = NSAlert()
+        alert.messageText = "Thermal Guard Status"
+        alert.informativeText = [
+            "Thermal Guard: \(state.thermalGuardEnabled ? "Enabled" : "Disabled")",
+            "Current Thermal Pressure: \(currentLevel.title)",
+            "Trip Threshold: \(thermalGuardThreshold().title)",
+            "Cooldown: \(thermalGuardCooldownRemainingText() ?? "Ready")",
+            "Configured Cooldown Length: \(thermalGuardCooldownMinutes()) minutes"
+        ].joined(separator: "\n")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+
+        EventLog.shared.add("Thermal Guard status reviewed.")
     }
 
     @objc private func exportDiagnostics() {
@@ -3053,6 +4490,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         desktopServiceButton = nil
         desktopSleepButton = nil
         desktopUpdateButton = nil
+        desktopACPowerOnlyButton = nil
+        desktopAppScopedButton = nil
+        desktopThermalGuardButton = nil
         desktopServiceCard = nil
         desktopProtectionCard = nil
         desktopVersionCard = nil
