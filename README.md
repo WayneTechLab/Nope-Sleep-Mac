@@ -18,7 +18,7 @@ The software is provided as-is, with no warranties or guarantees of fitness, com
 
 Review the full notice in [DISCLAIMER.md](./DISCLAIMER.md).
 
-## 24 Production Features
+## 25 Production Features
 
 1. Menu bar app with short status title (`N.S.M.`)
 2. Universal builds for Apple Silicon and Intel Macs
@@ -40,10 +40,11 @@ Review the full notice in [DISCLAIMER.md](./DISCLAIMER.md).
 18. Max Runtime Cap with hard-stop presets (`2h`, `4h`, `8h`) or an exact end date/time
 19. AC Power Only Mode that blocks sleep prevention on battery and drops protection when external power is removed
 20. App-Scoped Awake Mode that only keeps the Mac awake while selected apps are running or frontmost
-21. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
-22. Event history log with bounded in-memory buffering
-23. Service log rotation to cap disk usage
-24. GitHub release installer for installing on another Mac from Terminal
+21. Quiet Hours / Safe Sleep Windows that automatically return the Mac to normal sleep behavior overnight or on selected day profiles
+22. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
+23. Event history log with bounded in-memory buffering
+24. Service log rotation to cap disk usage
+25. GitHub release installer for installing on another Mac from Terminal
 
 ## Quick Install
 

@@ -128,6 +128,34 @@ struct ScopedAppRecord {
     let isFrontmost: Bool
 }
 
+enum QuietHoursDayProfile: Int, CaseIterable {
+    case everyDay = 0
+    case weekdaysOnly = 1
+    case weekendsOnly = 2
+
+    var title: String {
+        switch self {
+        case .everyDay:
+            return "Every Day"
+        case .weekdaysOnly:
+            return "Weekdays Only"
+        case .weekendsOnly:
+            return "Weekends Only"
+        }
+    }
+
+    func includesWeekday(_ weekday: Int) -> Bool {
+        switch self {
+        case .everyDay:
+            return true
+        case .weekdaysOnly:
+            return (2...6).contains(weekday)
+        case .weekendsOnly:
+            return weekday == 1 || weekday == 7
+        }
+    }
+}
+
 final class EventLog {
     static let shared = EventLog()
 
@@ -217,6 +245,10 @@ struct AppState {
     var appScopedAwakeModeEnabled: Bool
     var appScopedAwakePolicyRaw: Int
     var appScopedBundleIdentifiers: [String]
+    var quietHoursEnabled: Bool
+    var quietHoursStartMinutes: Int
+    var quietHoursEndMinutes: Int
+    var quietHoursDayProfileRaw: Int
     var thermalGuardEnabled: Bool
     var thermalGuardThresholdRaw: Int
     var thermalGuardCooldownMinutes: Int
@@ -244,6 +276,10 @@ final class AppStateStore {
         static let appScopedAwakeModeEnabled = "appScopedAwakeModeEnabled"
         static let appScopedAwakePolicyRaw = "appScopedAwakePolicyRaw"
         static let appScopedBundleIdentifiers = "appScopedBundleIdentifiers"
+        static let quietHoursEnabled = "quietHoursEnabled"
+        static let quietHoursStartMinutes = "quietHoursStartMinutes"
+        static let quietHoursEndMinutes = "quietHoursEndMinutes"
+        static let quietHoursDayProfileRaw = "quietHoursDayProfileRaw"
         static let thermalGuardEnabled = "thermalGuardEnabled"
         static let thermalGuardThresholdRaw = "thermalGuardThresholdRaw"
         static let thermalGuardCooldownMinutes = "thermalGuardCooldownMinutes"
@@ -273,6 +309,10 @@ final class AppStateStore {
             appScopedAwakeModeEnabled: defaults.object(forKey: Key.appScopedAwakeModeEnabled) as? Bool ?? false,
             appScopedAwakePolicyRaw: defaults.object(forKey: Key.appScopedAwakePolicyRaw) as? Int ?? AppScopedAwakePolicy.anySelectedRunning.rawValue,
             appScopedBundleIdentifiers: defaults.stringArray(forKey: Key.appScopedBundleIdentifiers) ?? [],
+            quietHoursEnabled: defaults.object(forKey: Key.quietHoursEnabled) as? Bool ?? false,
+            quietHoursStartMinutes: defaults.object(forKey: Key.quietHoursStartMinutes) as? Int ?? (22 * 60),
+            quietHoursEndMinutes: defaults.object(forKey: Key.quietHoursEndMinutes) as? Int ?? (7 * 60),
+            quietHoursDayProfileRaw: defaults.object(forKey: Key.quietHoursDayProfileRaw) as? Int ?? QuietHoursDayProfile.everyDay.rawValue,
             thermalGuardEnabled: defaults.object(forKey: Key.thermalGuardEnabled) as? Bool ?? true,
             thermalGuardThresholdRaw: defaults.object(forKey: Key.thermalGuardThresholdRaw) as? Int ?? ThermalPressureLevel.serious.rawValue,
             thermalGuardCooldownMinutes: defaults.object(forKey: Key.thermalGuardCooldownMinutes) as? Int ?? 15,
@@ -300,6 +340,10 @@ final class AppStateStore {
         defaults.set(state.appScopedAwakeModeEnabled, forKey: Key.appScopedAwakeModeEnabled)
         defaults.set(state.appScopedAwakePolicyRaw, forKey: Key.appScopedAwakePolicyRaw)
         defaults.set(state.appScopedBundleIdentifiers, forKey: Key.appScopedBundleIdentifiers)
+        defaults.set(state.quietHoursEnabled, forKey: Key.quietHoursEnabled)
+        defaults.set(state.quietHoursStartMinutes, forKey: Key.quietHoursStartMinutes)
+        defaults.set(state.quietHoursEndMinutes, forKey: Key.quietHoursEndMinutes)
+        defaults.set(state.quietHoursDayProfileRaw, forKey: Key.quietHoursDayProfileRaw)
         defaults.set(state.thermalGuardEnabled, forKey: Key.thermalGuardEnabled)
         defaults.set(state.thermalGuardThresholdRaw, forKey: Key.thermalGuardThresholdRaw)
         defaults.set(state.thermalGuardCooldownMinutes, forKey: Key.thermalGuardCooldownMinutes)
@@ -1412,6 +1456,10 @@ enum DiagnosticsBuilder {
         lines.append("- appScopedAwakeModeEnabled: \(state.appScopedAwakeModeEnabled)")
         lines.append("- appScopedAwakePolicy: \(AppScopedAwakePolicy(rawValue: state.appScopedAwakePolicyRaw)?.title ?? AppScopedAwakePolicy.anySelectedRunning.title)")
         lines.append("- appScopedBundleIdentifiers: \(state.appScopedBundleIdentifiers.isEmpty ? "none" : state.appScopedBundleIdentifiers.joined(separator: ", "))")
+        lines.append("- quietHoursEnabled: \(state.quietHoursEnabled)")
+        lines.append("- quietHoursStartMinutes: \(state.quietHoursStartMinutes)")
+        lines.append("- quietHoursEndMinutes: \(state.quietHoursEndMinutes)")
+        lines.append("- quietHoursDayProfile: \(QuietHoursDayProfile(rawValue: state.quietHoursDayProfileRaw)?.title ?? QuietHoursDayProfile.everyDay.title)")
         lines.append("- thermalGuardEnabled: \(state.thermalGuardEnabled)")
         lines.append("- thermalGuardThreshold: \(ThermalPressureLevel(rawValue: state.thermalGuardThresholdRaw)?.title ?? ThermalPressureLevel.serious.title)")
         lines.append("- thermalGuardCooldownMinutes: \(state.thermalGuardCooldownMinutes)")
@@ -1563,6 +1611,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let appScopedClearItem = NSMenuItem(title: "Clear Selected Apps", action: #selector(clearScopedAwakeApps), keyEquivalent: "")
     private let appScopedReviewItem = NSMenuItem(title: "Review Scoped App Status...", action: #selector(showAppScopedAwakeStatus), keyEquivalent: "")
     private var appScopedPolicyOptionItems: [AppScopedAwakePolicy: NSMenuItem] = [:]
+    private let quietHoursItem = NSMenuItem(title: "Quiet Hours / Safe Sleep Windows", action: nil, keyEquivalent: "")
+    private let quietHoursMenu = NSMenu(title: "Quiet Hours / Safe Sleep Windows")
+    private let quietHoursStatusItem = NSMenuItem(title: "Status: --", action: nil, keyEquivalent: "")
+    private let quietHoursToggleItem = NSMenuItem(title: "Enable Quiet Hours", action: #selector(toggleQuietHours), keyEquivalent: "")
+    private let quietHoursStartItem = NSMenuItem(title: "Set Start Time...", action: #selector(promptQuietHoursStartTime), keyEquivalent: "")
+    private let quietHoursEndItem = NSMenuItem(title: "Set End Time...", action: #selector(promptQuietHoursEndTime), keyEquivalent: "")
+    private let quietHoursDaysItem = NSMenuItem(title: "Day Profile", action: nil, keyEquivalent: "")
+    private let quietHoursDaysMenu = NSMenu(title: "Day Profile")
+    private let quietHoursReviewItem = NSMenuItem(title: "Review Quiet Hours Status...", action: #selector(showQuietHoursStatus), keyEquivalent: "")
+    private var quietHoursDayOptionItems: [QuietHoursDayProfile: NSMenuItem] = [:]
     private let thermalGuardItem = NSMenuItem(title: "Thermal Guard", action: nil, keyEquivalent: "")
     private let thermalGuardMenu = NSMenu(title: "Thermal Guard")
     private let thermalGuardStatusItem = NSMenuItem(title: "Status: --", action: nil, keyEquivalent: "")
@@ -1615,6 +1673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let runtimeCapOptions: [Int] = [120, 240, 480]
     private let shutdownTimerOptions: [Int] = [15, 30, 60, 120]
     private let appScopedPolicyOptions: [AppScopedAwakePolicy] = [.anySelectedRunning, .frontmostSelectedApp]
+    private let quietHoursDayProfiles: [QuietHoursDayProfile] = [.everyDay, .weekdaysOnly, .weekendsOnly]
     private let thermalGuardThresholdOptions: [ThermalPressureLevel] = [.fair, .serious, .critical]
     private let thermalGuardCooldownOptions: [Int] = [5, 15, 30, 60]
 
@@ -1687,6 +1746,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buildResourceMenu()
         buildACPowerOnlyMenu()
         buildAppScopedMenu()
+        buildQuietHoursMenu()
         buildThermalGuardMenu()
         buildRuntimeCapMenu()
 
@@ -1704,6 +1764,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appScopedAddFrontmostItem.target = self
         appScopedClearItem.target = self
         appScopedReviewItem.target = self
+        quietHoursToggleItem.target = self
+        quietHoursStartItem.target = self
+        quietHoursEndItem.target = self
+        quietHoursReviewItem.target = self
         thermalGuardToggleItem.target = self
         thermalGuardClearCooldownItem.target = self
         thermalGuardReviewItem.target = self
@@ -1750,6 +1814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(watchdogToggleItem)
         menu.addItem(acPowerOnlyItem)
         menu.addItem(appScopedItem)
+        menu.addItem(quietHoursItem)
         menu.addItem(thermalGuardItem)
         menu.addItem(runtimeCapItem)
         menu.addItem(NSMenuItem.separator())
@@ -1842,6 +1907,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appScopedMenu.addItem(NSMenuItem.separator())
         appScopedMenu.addItem(appScopedReviewItem)
         appScopedItem.submenu = appScopedMenu
+    }
+
+    private func buildQuietHoursMenu() {
+        quietHoursMenu.removeAllItems()
+        quietHoursDaysMenu.removeAllItems()
+        quietHoursDayOptionItems.removeAll()
+
+        quietHoursStatusItem.isEnabled = false
+        quietHoursMenu.addItem(quietHoursStatusItem)
+        quietHoursMenu.addItem(NSMenuItem.separator())
+        quietHoursMenu.addItem(quietHoursToggleItem)
+        quietHoursMenu.addItem(quietHoursStartItem)
+        quietHoursMenu.addItem(quietHoursEndItem)
+
+        for profile in quietHoursDayProfiles {
+            let item = NSMenuItem(title: profile.title, action: #selector(selectQuietHoursDayProfile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: profile.rawValue)
+            quietHoursDaysMenu.addItem(item)
+            quietHoursDayOptionItems[profile] = item
+        }
+
+        quietHoursDaysItem.submenu = quietHoursDaysMenu
+        quietHoursMenu.addItem(quietHoursDaysItem)
+        quietHoursMenu.addItem(NSMenuItem.separator())
+        quietHoursMenu.addItem(quietHoursReviewItem)
+        quietHoursItem.submenu = quietHoursMenu
     }
 
     private func buildThermalGuardMenu() {
@@ -2252,15 +2344,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let snapshot = resourceSnapshot ?? resourceMonitor.sample()
         let thermalGuardCooldownText = thermalGuardCooldownRemainingText()
         let acPowerOnlyBlocked = state.acPowerOnlyModeEnabled && !snapshot.powerSource.isExternalPower
+        let quietHoursBlocked = state.quietHoursEnabled && isQuietHoursActive()
         let appScopedBlocked = appScopedAwakeBlocksManualEnable()
 
         desktopSleepButton?.title = blocker.isActive
             ? "Disable Sleep Prevention"
             : (
                 thermalGuardCooldownText.map { "Cooling Down (\($0) left)" }
-                ?? (acPowerOnlyBlocked ? "AC Power Required" : (appScopedBlocked ? "Waiting for App Match" : "Enable Sleep Prevention"))
+                ?? (acPowerOnlyBlocked ? "AC Power Required" : (quietHoursBlocked ? "Quiet Hours Active" : (appScopedBlocked ? "Waiting for App Match" : "Enable Sleep Prevention")))
             )
-        desktopSleepButton?.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !appScopedBlocked)
+        desktopSleepButton?.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !quietHoursBlocked && !appScopedBlocked)
 
         let sleepTimerText: String
         if let endDate = state.timerEndDate, let minutes = state.timerMinutes {
@@ -2312,6 +2405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         lines.append("- App-Scoped Awake Mode: \(appScopedAwakeStatusText())")
         lines.append("- App-Scoped Policy: \(appScopedAwakePolicy().title)")
         lines.append("- App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "None" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))")
+        lines.append("- Quiet Hours: \(quietHoursStatusText())")
         lines.append("- Thermal Guard: \(state.thermalGuardEnabled ? "Enabled" : "Disabled")")
         lines.append("- Thermal Guard Threshold: \(thermalGuardThreshold().title)")
         lines.append("- Thermal Guard Cooldown: \(thermalGuardCooldownText.map { "\($0) left" } ?? "Ready")")
@@ -2743,6 +2837,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         EventLog.shared.add("App-Scoped Awake Mode enabled sleep prevention for \(matchedRecords.map(\.displayName).joined(separator: ", ")).")
     }
 
+    private func quietHoursDayProfile() -> QuietHoursDayProfile {
+        QuietHoursDayProfile(rawValue: state.quietHoursDayProfileRaw) ?? .everyDay
+    }
+
+    private func normalizedMinutesOfDay(_ minutes: Int) -> Int {
+        let minutesPerDay = 24 * 60
+        let normalized = minutes % minutesPerDay
+        return normalized >= 0 ? normalized : normalized + minutesPerDay
+    }
+
+    private func timeOfDayText(minutes: Int) -> String {
+        var components = DateComponents()
+        let normalizedMinutes = normalizedMinutesOfDay(minutes)
+        components.hour = normalizedMinutes / 60
+        components.minute = normalizedMinutes % 60
+
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+
+        return formatter.string(from: Calendar.current.date(from: components) ?? Date())
+    }
+
+    private func quietHoursSummaryText() -> String {
+        "\(timeOfDayText(minutes: state.quietHoursStartMinutes)) - \(timeOfDayText(minutes: state.quietHoursEndMinutes)) • \(quietHoursDayProfile().title)"
+    }
+
+    private func isQuietHoursActive(now: Date = Date()) -> Bool {
+        guard state.quietHoursEnabled else {
+            return false
+        }
+
+        let calendar = Calendar.current
+        let currentWeekday = calendar.component(.weekday, from: now)
+        let previousWeekday = calendar.component(.weekday, from: calendar.date(byAdding: .day, value: -1, to: now) ?? now)
+        let currentMinutes = (calendar.component(.hour, from: now) * 60) + calendar.component(.minute, from: now)
+        let startMinutes = normalizedMinutesOfDay(state.quietHoursStartMinutes)
+        let endMinutes = normalizedMinutesOfDay(state.quietHoursEndMinutes)
+        let dayProfile = quietHoursDayProfile()
+
+        if startMinutes == endMinutes {
+            return dayProfile.includesWeekday(currentWeekday) || dayProfile.includesWeekday(previousWeekday)
+        }
+
+        if startMinutes < endMinutes {
+            return dayProfile.includesWeekday(currentWeekday) && currentMinutes >= startMinutes && currentMinutes < endMinutes
+        }
+
+        if currentMinutes >= startMinutes {
+            return dayProfile.includesWeekday(currentWeekday)
+        }
+
+        return currentMinutes < endMinutes && dayProfile.includesWeekday(previousWeekday)
+    }
+
+    private func quietHoursStatusText(now: Date = Date()) -> String {
+        guard state.quietHoursEnabled else {
+            return "Disabled"
+        }
+
+        return "\(isQuietHoursActive(now: now) ? "Active" : "Armed") • \(quietHoursSummaryText())"
+    }
+
+    private func presentQuietHoursAlert() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Quiet Hours Active"
+        alert.informativeText = """
+        Quiet Hours / Safe Sleep Windows is active right now.
+
+        Current window: \(quietHoursSummaryText()). Sleep prevention is blocked until the quiet window ends, unless you disable Quiet Hours.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        _ = alert.runModal()
+    }
+
+    private func evaluateQuietHours() {
+        guard state.quietHoursEnabled, isQuietHoursActive() else {
+            return
+        }
+
+        guard blocker.isActive else {
+            return
+        }
+
+        blocker.deactivate()
+        state.preventSleep = false
+        clearSleepTimer(logChange: false)
+        handleProtectionDisabledForRuntimeCap()
+        stateStore.save(state)
+
+        EventLog.shared.add("Quiet Hours disabled sleep prevention because the safe-sleep window is active.")
+    }
+
     private func thermalGuardCooldownMinutes() -> Int {
         max(1, state.thermalGuardCooldownMinutes)
     }
@@ -2806,6 +2996,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             if showThermalAlert {
                 presentACPowerRequiredAlert(currentSource: powerSource)
+            }
+
+            return false
+        }
+
+        if state.quietHoursEnabled, isQuietHoursActive() {
+            if logBlockedReason {
+                EventLog.shared.add("Quiet Hours blocked sleep prevention because the safe-sleep window is active.")
+            }
+
+            if showThermalAlert {
+                presentQuietHoursAlert()
             }
 
             return false
@@ -3044,6 +3246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func refreshMenuState() {
         let snapshot = resourceMonitor.sample()
         evaluateACPowerOnlyMode(using: snapshot)
+        evaluateQuietHours()
         evaluateThermalGuard(using: snapshot)
         normalizeRuntimeCapState()
         evaluateAppScopedAwakeMode()
@@ -3064,15 +3267,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let thermalGuardCooldownText = thermalGuardCooldownRemainingText()
         let acPowerOnlyBlocked = state.acPowerOnlyModeEnabled && !snapshot.powerSource.isExternalPower
+        let quietHoursBlocked = state.quietHoursEnabled && isQuietHoursActive()
         let appScopedBlocked = appScopedAwakeBlocksManualEnable()
         sleepToggleItem.title = thermalGuardCooldownText != nil
             ? "Prevent Sleep (Cooling Down)"
-            : (acPowerOnlyBlocked ? "Prevent Sleep (AC Power Required)" : (appScopedBlocked ? "Prevent Sleep (Waiting for App)" : "Prevent Sleep"))
-        sleepToggleItem.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !appScopedBlocked)
+            : (acPowerOnlyBlocked ? "Prevent Sleep (AC Power Required)" : (quietHoursBlocked ? "Prevent Sleep (Quiet Hours)" : (appScopedBlocked ? "Prevent Sleep (Waiting for App)" : "Prevent Sleep")))
+        sleepToggleItem.isEnabled = blocker.isActive || (thermalGuardCooldownText == nil && !acPowerOnlyBlocked && !quietHoursBlocked && !appScopedBlocked)
 
         updateResourceItems(snapshot)
         updateACPowerOnlyMenuState(snapshot)
         updateAppScopedMenuState()
+        updateQuietHoursMenuState()
         updateThermalGuardMenuState(snapshot)
         updateRuntimeCapMenuState()
         refreshDesktopWindowState(resourceSnapshot: snapshot)
@@ -3174,6 +3379,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             appScopedRemoveItem.isEnabled = true
             appScopedClearItem.isEnabled = true
+        }
+    }
+
+    private func updateQuietHoursMenuState() {
+        let dayProfile = quietHoursDayProfile()
+
+        quietHoursItem.title = isQuietHoursActive() ? "Quiet Hours / Safe Sleep Windows (Active)" : "Quiet Hours / Safe Sleep Windows"
+        quietHoursStatusItem.title = "Status: \(quietHoursStatusText())"
+        quietHoursToggleItem.state = state.quietHoursEnabled ? .on : .off
+        quietHoursStartItem.title = "Set Start Time... (\(timeOfDayText(minutes: state.quietHoursStartMinutes)))"
+        quietHoursEndItem.title = "Set End Time... (\(timeOfDayText(minutes: state.quietHoursEndMinutes)))"
+        quietHoursDaysItem.title = "Day Profile (\(dayProfile.title))"
+
+        for (profile, item) in quietHoursDayOptionItems {
+            item.state = profile == dayProfile ? .on : .off
         }
     }
 
@@ -3646,6 +3866,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return alert.runModal() == .alertFirstButtonReturn ? picker.dateValue : nil
     }
 
+    private func promptForTimeOfDay(title: String, message: String, defaultMinutes: Int) -> Int? {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Set")
+        alert.addButton(withTitle: "Cancel")
+
+        let picker = NSDatePicker(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        picker.datePickerStyle = .textFieldAndStepper
+        picker.datePickerElements = [.hourMinute]
+
+        let normalizedMinutes = normalizedMinutesOfDay(defaultMinutes)
+        var components = DateComponents()
+        components.hour = normalizedMinutes / 60
+        components.minute = normalizedMinutes % 60
+        picker.dateValue = Calendar.current.date(from: components) ?? Date()
+        alert.accessoryView = picker
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return nil
+        }
+
+        let selectedComponents = Calendar.current.dateComponents([.hour, .minute], from: picker.dateValue)
+        return ((selectedComponents.hour ?? 0) * 60) + (selectedComponents.minute ?? 0)
+    }
+
     private func presentFirstLaunchWarningIfNeeded() -> Bool {
         guard state.riskWarningAcceptedVersion != AppMeta.riskWarningVersion else {
             return true
@@ -4038,6 +4287,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshMenuState()
     }
 
+    @objc private func toggleQuietHours() {
+        state.quietHoursEnabled.toggle()
+        stateStore.save(state)
+        EventLog.shared.add("Quiet Hours \(state.quietHoursEnabled ? "enabled" : "disabled").")
+        refreshMenuState()
+    }
+
+    @objc private func selectQuietHoursDayProfile(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber,
+              let profile = QuietHoursDayProfile(rawValue: wrapped.intValue) else {
+            return
+        }
+
+        state.quietHoursDayProfileRaw = profile.rawValue
+        stateStore.save(state)
+        EventLog.shared.add("Quiet Hours day profile set to \(profile.title).")
+        refreshMenuState()
+    }
+
+    @objc private func promptQuietHoursStartTime() {
+        guard let minutes = promptForTimeOfDay(
+            title: "Quiet Hours Start",
+            message: "Pick the daily time when Quiet Hours should begin.",
+            defaultMinutes: state.quietHoursStartMinutes
+        ) else {
+            return
+        }
+
+        state.quietHoursStartMinutes = minutes
+        stateStore.save(state)
+        EventLog.shared.add("Quiet Hours start set to \(timeOfDayText(minutes: minutes)).")
+        refreshMenuState()
+    }
+
+    @objc private func promptQuietHoursEndTime() {
+        guard let minutes = promptForTimeOfDay(
+            title: "Quiet Hours End",
+            message: "Pick the daily time when Quiet Hours should end.",
+            defaultMinutes: state.quietHoursEndMinutes
+        ) else {
+            return
+        }
+
+        state.quietHoursEndMinutes = minutes
+        stateStore.save(state)
+        EventLog.shared.add("Quiet Hours end set to \(timeOfDayText(minutes: minutes)).")
+        refreshMenuState()
+    }
+
     @objc private func toggleThermalGuard() {
         state.thermalGuardEnabled.toggle()
 
@@ -4308,6 +4606,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         checks.append("App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "Enabled" : "Disabled")")
         checks.append("App-Scoped Policy: \(appScopedAwakePolicy().title)")
         checks.append("App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "None" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))")
+        checks.append("Quiet Hours: \(quietHoursStatusText())")
         checks.append("Thermal Guard: \(state.thermalGuardEnabled ? "Enabled" : "Disabled")")
         checks.append("Thermal pressure: \(resourceMonitor.thermalPressureLevel().title)")
         checks.append("Max Runtime Cap: \(runtimeCapStatusText())")
@@ -4338,6 +4637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "enabled" : "disabled")",
             "App-Scoped Policy: \(appScopedAwakePolicy().title)",
             "App-Scoped Apps: \(state.appScopedBundleIdentifiers.isEmpty ? "none" : state.appScopedBundleIdentifiers.map(scopedAwakeDisplayName(forBundleIdentifier:)).joined(separator: ", "))",
+            "Quiet Hours: \(quietHoursStatusText())",
             "Thermal Guard: \(state.thermalGuardEnabled ? "enabled" : "disabled")",
             "Thermal Guard threshold: \(thermalGuardThreshold().title)",
             "Thermal Guard cooldown: \(thermalGuardCooldownRemainingText() ?? "ready")",
@@ -4411,6 +4711,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ = alert.runModal()
 
         EventLog.shared.add("App-Scoped Awake Mode status reviewed.")
+    }
+
+    @objc private func showQuietHoursStatus() {
+        let alert = NSAlert()
+        alert.messageText = "Quiet Hours / Safe Sleep Windows"
+        alert.informativeText = [
+            "Quiet Hours: \(state.quietHoursEnabled ? "Enabled" : "Disabled")",
+            "Current Status: \(quietHoursStatusText())",
+            "Start Time: \(timeOfDayText(minutes: state.quietHoursStartMinutes))",
+            "End Time: \(timeOfDayText(minutes: state.quietHoursEndMinutes))",
+            "Day Profile: \(quietHoursDayProfile().title)"
+        ].joined(separator: "\n")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+
+        EventLog.shared.add("Quiet Hours status reviewed.")
     }
 
     @objc private func showThermalGuardStatus() {
