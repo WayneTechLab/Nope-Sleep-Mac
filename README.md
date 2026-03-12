@@ -18,7 +18,7 @@ The software is provided as-is, with no warranties or guarantees of fitness, com
 
 Review the full notice in [DISCLAIMER.md](./DISCLAIMER.md).
 
-## 25 Production Features
+## 26 Production Features
 
 1. Menu bar app with short status title (`N.S.M.`)
 2. Universal builds for Apple Silicon and Intel Macs
@@ -41,10 +41,11 @@ Review the full notice in [DISCLAIMER.md](./DISCLAIMER.md).
 19. AC Power Only Mode that blocks sleep prevention on battery and drops protection when external power is removed
 20. App-Scoped Awake Mode that only keeps the Mac awake while selected apps are running or frontmost
 21. Quiet Hours / Safe Sleep Windows that automatically return the Mac to normal sleep behavior overnight or on selected day profiles
-22. Power profiles: Diamond, Power+, Battery+, Off-Grid, Restore Connectivity
-23. Event history log with bounded in-memory buffering
-24. Service log rotation to cap disk usage
-25. GitHub release installer for installing on another Mac from Terminal
+22. Power profiles with exact change review, restore connectivity, and restore standard defaults
+23. Five appearance themes for menu styling and desktop color surfaces: Standard, Dark Slate, Ocean Blue, Forest Green, Sunset Amber
+24. Event history log with bounded in-memory buffering
+25. Service log rotation to cap disk usage
+26. GitHub release installer for installing on another Mac from Terminal
 
 ## Quick Install
 
@@ -169,6 +170,18 @@ The desktop UI includes:
 3. Update/install action
 4. Event history view
 5. Version and provider branding
+
+## Power Profiles
+
+Use `Power Profiles > Show What Power Profiles Change...` to review the exact app, networking, and `pmset` changes before applying a profile.
+
+Use `Power Profiles > Restore Standard Defaults (Undo Profile)` to return the app-managed power posture to the built-in balanced baseline.
+
+## Themes
+
+Use `Appearance & Theme` to switch between `Standard`, `Dark Slate`, `Ocean Blue`, `Forest Green`, and `Sunset Amber`.
+
+macOS still controls the native menu material itself, but theme selection updates the menu appearance mode, accent styling, and the desktop control-surface colors.
 
 ## Full Removal and Cleanup
 

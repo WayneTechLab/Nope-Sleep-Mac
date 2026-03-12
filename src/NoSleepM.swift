@@ -241,6 +241,7 @@ struct AppState {
     var launchAtBoot: Bool
     var serviceEnabled: Bool
     var preventSleep: Bool
+    var themeProfileRaw: Int
     var acPowerOnlyModeEnabled: Bool
     var appScopedAwakeModeEnabled: Bool
     var appScopedAwakePolicyRaw: Int
@@ -272,6 +273,7 @@ final class AppStateStore {
         static let launchAtBoot = "launchAtBoot"
         static let serviceEnabled = "serviceEnabled"
         static let preventSleep = "preventSleep"
+        static let themeProfileRaw = "themeProfileRaw"
         static let acPowerOnlyModeEnabled = "acPowerOnlyModeEnabled"
         static let appScopedAwakeModeEnabled = "appScopedAwakeModeEnabled"
         static let appScopedAwakePolicyRaw = "appScopedAwakePolicyRaw"
@@ -305,6 +307,7 @@ final class AppStateStore {
             launchAtBoot: defaults.object(forKey: Key.launchAtBoot) as? Bool ?? true,
             serviceEnabled: defaults.object(forKey: Key.serviceEnabled) as? Bool ?? true,
             preventSleep: defaults.object(forKey: Key.preventSleep) as? Bool ?? true,
+            themeProfileRaw: defaults.object(forKey: Key.themeProfileRaw) as? Int ?? ThemeProfile.standard.rawValue,
             acPowerOnlyModeEnabled: defaults.object(forKey: Key.acPowerOnlyModeEnabled) as? Bool ?? false,
             appScopedAwakeModeEnabled: defaults.object(forKey: Key.appScopedAwakeModeEnabled) as? Bool ?? false,
             appScopedAwakePolicyRaw: defaults.object(forKey: Key.appScopedAwakePolicyRaw) as? Int ?? AppScopedAwakePolicy.anySelectedRunning.rawValue,
@@ -336,6 +339,7 @@ final class AppStateStore {
         defaults.set(state.launchAtBoot, forKey: Key.launchAtBoot)
         defaults.set(state.serviceEnabled, forKey: Key.serviceEnabled)
         defaults.set(state.preventSleep, forKey: Key.preventSleep)
+        defaults.set(state.themeProfileRaw, forKey: Key.themeProfileRaw)
         defaults.set(state.acPowerOnlyModeEnabled, forKey: Key.acPowerOnlyModeEnabled)
         defaults.set(state.appScopedAwakeModeEnabled, forKey: Key.appScopedAwakeModeEnabled)
         defaults.set(state.appScopedAwakePolicyRaw, forKey: Key.appScopedAwakePolicyRaw)
@@ -647,6 +651,192 @@ final class UpdateChecker {
     }
 }
 
+struct AppThemePalette {
+    let windowAppearanceName: NSAppearance.Name?
+    let menuAppearanceName: NSAppearance.Name?
+    let backdropGradientColors: [NSColor]
+    let glowAColor: NSColor
+    let glowBColor: NSColor
+    let cardBorderColor: NSColor
+    let cardBackgroundColor: NSColor
+    let cardShadowColor: NSColor
+    let primaryTextColor: NSColor
+    let secondaryTextColor: NSColor
+    let mutedTextColor: NSColor
+    let buttonColor: NSColor
+    let buttonTextColor: NSColor
+    let secondaryButtonColor: NSColor
+    let secondaryButtonTextColor: NSColor
+    let linkColor: NSColor
+    let menuPrimaryTextColor: NSColor
+    let menuSecondaryTextColor: NSColor
+    let menuAccentColor: NSColor
+    let metricNeutralColor: NSColor
+}
+
+enum ThemeProfile: Int, CaseIterable {
+    case standard = 0
+    case dark = 1
+    case oceanBlue = 2
+    case forestGreen = 3
+    case sunsetAmber = 4
+
+    var title: String {
+        switch self {
+        case .standard:
+            return "Standard"
+        case .dark:
+            return "Dark Slate"
+        case .oceanBlue:
+            return "Ocean Blue"
+        case .forestGreen:
+            return "Forest Green"
+        case .sunsetAmber:
+            return "Sunset Amber"
+        }
+    }
+
+    var palette: AppThemePalette {
+        switch self {
+        case .standard:
+            return AppThemePalette(
+                windowAppearanceName: nil,
+                menuAppearanceName: nil,
+                backdropGradientColors: [
+                    NSColor(calibratedRed: 0.10, green: 0.13, blue: 0.18, alpha: 1.0),
+                    NSColor(calibratedRed: 0.17, green: 0.21, blue: 0.28, alpha: 1.0),
+                    NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.14, alpha: 1.0)
+                ],
+                glowAColor: NSColor(calibratedRed: 0.70, green: 0.78, blue: 0.92, alpha: 0.16),
+                glowBColor: NSColor(calibratedRed: 0.92, green: 0.95, blue: 1.00, alpha: 0.10),
+                cardBorderColor: NSColor(calibratedWhite: 1.0, alpha: 0.12),
+                cardBackgroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.08),
+                cardShadowColor: NSColor.black.withAlphaComponent(0.25),
+                primaryTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.96),
+                secondaryTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.76),
+                mutedTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.60),
+                buttonColor: NSColor(calibratedRed: 0.36, green: 0.52, blue: 0.78, alpha: 0.92),
+                buttonTextColor: .white,
+                secondaryButtonColor: NSColor(calibratedWhite: 1.0, alpha: 0.16),
+                secondaryButtonTextColor: .white,
+                linkColor: NSColor(calibratedRed: 0.82, green: 0.88, blue: 0.97, alpha: 1.0),
+                menuPrimaryTextColor: NSColor.labelColor,
+                menuSecondaryTextColor: NSColor.secondaryLabelColor,
+                menuAccentColor: NSColor(calibratedRed: 0.24, green: 0.45, blue: 0.73, alpha: 1.0),
+                metricNeutralColor: NSColor(calibratedWhite: 1.0, alpha: 0.78)
+            )
+        case .dark:
+            return AppThemePalette(
+                windowAppearanceName: .darkAqua,
+                menuAppearanceName: .darkAqua,
+                backdropGradientColors: [
+                    NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.06, alpha: 1.0),
+                    NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.10, alpha: 1.0),
+                    NSColor(calibratedRed: 0.02, green: 0.03, blue: 0.04, alpha: 1.0)
+                ],
+                glowAColor: NSColor(calibratedWhite: 0.72, alpha: 0.11),
+                glowBColor: NSColor(calibratedWhite: 0.88, alpha: 0.08),
+                cardBorderColor: NSColor(calibratedWhite: 1.0, alpha: 0.10),
+                cardBackgroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.06),
+                cardShadowColor: NSColor.black.withAlphaComponent(0.38),
+                primaryTextColor: NSColor(calibratedWhite: 0.98, alpha: 0.96),
+                secondaryTextColor: NSColor(calibratedWhite: 0.90, alpha: 0.78),
+                mutedTextColor: NSColor(calibratedWhite: 0.82, alpha: 0.56),
+                buttonColor: NSColor(calibratedWhite: 0.22, alpha: 0.96),
+                buttonTextColor: NSColor(calibratedWhite: 0.98, alpha: 1.0),
+                secondaryButtonColor: NSColor(calibratedWhite: 1.0, alpha: 0.12),
+                secondaryButtonTextColor: NSColor(calibratedWhite: 0.95, alpha: 1.0),
+                linkColor: NSColor(calibratedWhite: 0.88, alpha: 0.96),
+                menuPrimaryTextColor: NSColor(calibratedWhite: 0.92, alpha: 0.98),
+                menuSecondaryTextColor: NSColor(calibratedWhite: 0.72, alpha: 0.86),
+                menuAccentColor: NSColor(calibratedWhite: 0.98, alpha: 0.98),
+                metricNeutralColor: NSColor(calibratedWhite: 0.90, alpha: 0.78)
+            )
+        case .oceanBlue:
+            return AppThemePalette(
+                windowAppearanceName: .darkAqua,
+                menuAppearanceName: .darkAqua,
+                backdropGradientColors: [
+                    NSColor(calibratedRed: 0.03, green: 0.08, blue: 0.16, alpha: 1.0),
+                    NSColor(calibratedRed: 0.05, green: 0.21, blue: 0.38, alpha: 1.0),
+                    NSColor(calibratedRed: 0.02, green: 0.05, blue: 0.11, alpha: 1.0)
+                ],
+                glowAColor: NSColor(calibratedRed: 0.22, green: 0.70, blue: 1.00, alpha: 0.20),
+                glowBColor: NSColor(calibratedRed: 0.70, green: 0.90, blue: 1.00, alpha: 0.12),
+                cardBorderColor: NSColor(calibratedRed: 0.58, green: 0.82, blue: 1.00, alpha: 0.20),
+                cardBackgroundColor: NSColor(calibratedRed: 0.90, green: 0.97, blue: 1.00, alpha: 0.08),
+                cardShadowColor: NSColor(calibratedRed: 0.00, green: 0.20, blue: 0.34, alpha: 0.40),
+                primaryTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.98),
+                secondaryTextColor: NSColor(calibratedRed: 0.86, green: 0.96, blue: 1.0, alpha: 0.80),
+                mutedTextColor: NSColor(calibratedRed: 0.80, green: 0.92, blue: 1.0, alpha: 0.60),
+                buttonColor: NSColor(calibratedRed: 0.12, green: 0.54, blue: 0.94, alpha: 0.94),
+                buttonTextColor: .white,
+                secondaryButtonColor: NSColor(calibratedRed: 0.72, green: 0.88, blue: 1.0, alpha: 0.18),
+                secondaryButtonTextColor: .white,
+                linkColor: NSColor(calibratedRed: 0.72, green: 0.92, blue: 1.0, alpha: 1.0),
+                menuPrimaryTextColor: NSColor(calibratedRed: 0.88, green: 0.96, blue: 1.0, alpha: 0.98),
+                menuSecondaryTextColor: NSColor(calibratedRed: 0.68, green: 0.84, blue: 0.94, alpha: 0.84),
+                menuAccentColor: NSColor(calibratedRed: 0.34, green: 0.78, blue: 1.00, alpha: 1.0),
+                metricNeutralColor: NSColor(calibratedRed: 0.88, green: 0.96, blue: 1.0, alpha: 0.80)
+            )
+        case .forestGreen:
+            return AppThemePalette(
+                windowAppearanceName: .darkAqua,
+                menuAppearanceName: .darkAqua,
+                backdropGradientColors: [
+                    NSColor(calibratedRed: 0.03, green: 0.10, blue: 0.07, alpha: 1.0),
+                    NSColor(calibratedRed: 0.08, green: 0.24, blue: 0.16, alpha: 1.0),
+                    NSColor(calibratedRed: 0.02, green: 0.06, blue: 0.05, alpha: 1.0)
+                ],
+                glowAColor: NSColor(calibratedRed: 0.28, green: 0.86, blue: 0.58, alpha: 0.18),
+                glowBColor: NSColor(calibratedRed: 0.82, green: 1.00, blue: 0.86, alpha: 0.10),
+                cardBorderColor: NSColor(calibratedRed: 0.66, green: 0.94, blue: 0.76, alpha: 0.18),
+                cardBackgroundColor: NSColor(calibratedRed: 0.92, green: 1.00, blue: 0.94, alpha: 0.07),
+                cardShadowColor: NSColor(calibratedRed: 0.00, green: 0.18, blue: 0.10, alpha: 0.40),
+                primaryTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.98),
+                secondaryTextColor: NSColor(calibratedRed: 0.88, green: 0.99, blue: 0.92, alpha: 0.80),
+                mutedTextColor: NSColor(calibratedRed: 0.82, green: 0.96, blue: 0.86, alpha: 0.60),
+                buttonColor: NSColor(calibratedRed: 0.12, green: 0.58, blue: 0.36, alpha: 0.94),
+                buttonTextColor: .white,
+                secondaryButtonColor: NSColor(calibratedRed: 0.70, green: 0.98, blue: 0.80, alpha: 0.18),
+                secondaryButtonTextColor: .white,
+                linkColor: NSColor(calibratedRed: 0.72, green: 0.98, blue: 0.82, alpha: 1.0),
+                menuPrimaryTextColor: NSColor(calibratedRed: 0.90, green: 0.98, blue: 0.92, alpha: 0.98),
+                menuSecondaryTextColor: NSColor(calibratedRed: 0.72, green: 0.88, blue: 0.76, alpha: 0.84),
+                menuAccentColor: NSColor(calibratedRed: 0.42, green: 0.92, blue: 0.62, alpha: 1.0),
+                metricNeutralColor: NSColor(calibratedRed: 0.90, green: 0.98, blue: 0.92, alpha: 0.80)
+            )
+        case .sunsetAmber:
+            return AppThemePalette(
+                windowAppearanceName: .darkAqua,
+                menuAppearanceName: .darkAqua,
+                backdropGradientColors: [
+                    NSColor(calibratedRed: 0.16, green: 0.07, blue: 0.04, alpha: 1.0),
+                    NSColor(calibratedRed: 0.33, green: 0.15, blue: 0.06, alpha: 1.0),
+                    NSColor(calibratedRed: 0.10, green: 0.04, blue: 0.03, alpha: 1.0)
+                ],
+                glowAColor: NSColor(calibratedRed: 1.00, green: 0.58, blue: 0.22, alpha: 0.18),
+                glowBColor: NSColor(calibratedRed: 1.00, green: 0.87, blue: 0.60, alpha: 0.10),
+                cardBorderColor: NSColor(calibratedRed: 1.00, green: 0.78, blue: 0.52, alpha: 0.20),
+                cardBackgroundColor: NSColor(calibratedRed: 1.00, green: 0.95, blue: 0.88, alpha: 0.07),
+                cardShadowColor: NSColor(calibratedRed: 0.30, green: 0.10, blue: 0.00, alpha: 0.36),
+                primaryTextColor: NSColor(calibratedWhite: 1.0, alpha: 0.98),
+                secondaryTextColor: NSColor(calibratedRed: 1.00, green: 0.93, blue: 0.82, alpha: 0.80),
+                mutedTextColor: NSColor(calibratedRed: 1.00, green: 0.88, blue: 0.72, alpha: 0.62),
+                buttonColor: NSColor(calibratedRed: 0.92, green: 0.42, blue: 0.10, alpha: 0.95),
+                buttonTextColor: .white,
+                secondaryButtonColor: NSColor(calibratedRed: 1.00, green: 0.80, blue: 0.52, alpha: 0.18),
+                secondaryButtonTextColor: .white,
+                linkColor: NSColor(calibratedRed: 1.00, green: 0.84, blue: 0.54, alpha: 1.0),
+                menuPrimaryTextColor: NSColor(calibratedRed: 1.00, green: 0.95, blue: 0.86, alpha: 0.98),
+                menuSecondaryTextColor: NSColor(calibratedRed: 0.94, green: 0.80, blue: 0.64, alpha: 0.84),
+                menuAccentColor: NSColor(calibratedRed: 1.00, green: 0.72, blue: 0.30, alpha: 1.0),
+                metricNeutralColor: NSColor(calibratedRed: 1.00, green: 0.95, blue: 0.86, alpha: 0.80)
+            )
+        }
+    }
+}
+
 final class GradientBackdropView: NSView {
     private let gradientLayer = CAGradientLayer()
     private let glowLayerA = CALayer()
@@ -657,30 +847,31 @@ final class GradientBackdropView: NSView {
         wantsLayer = true
         layer = CALayer()
         layer?.masksToBounds = true
-
-        gradientLayer.colors = [
-            NSColor(calibratedRed: 0.06, green: 0.09, blue: 0.14, alpha: 1.0).cgColor,
-            NSColor(calibratedRed: 0.12, green: 0.18, blue: 0.29, alpha: 1.0).cgColor,
-            NSColor(calibratedRed: 0.05, green: 0.07, blue: 0.11, alpha: 1.0).cgColor
-        ]
         gradientLayer.startPoint = CGPoint(x: 0.0, y: 1.0)
         gradientLayer.endPoint = CGPoint(x: 1.0, y: 0.0)
-
-        glowLayerA.backgroundColor = NSColor(calibratedRed: 0.50, green: 0.82, blue: 1.00, alpha: 0.18).cgColor
-        glowLayerB.backgroundColor = NSColor(calibratedRed: 0.87, green: 0.95, blue: 1.00, alpha: 0.12).cgColor
 
         for glowLayer in [glowLayerA, glowLayerB] {
             glowLayer.shadowOpacity = 0.35
             glowLayer.shadowRadius = 80
-            glowLayer.shadowColor = glowLayer.backgroundColor
             layer?.addSublayer(glowLayer)
         }
 
         layer?.insertSublayer(gradientLayer, at: 0)
+        apply(theme: ThemeProfile.standard.palette)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func apply(theme: AppThemePalette) {
+        gradientLayer.colors = theme.backdropGradientColors.map(\.cgColor)
+        glowLayerA.backgroundColor = theme.glowAColor.cgColor
+        glowLayerB.backgroundColor = theme.glowBColor.cgColor
+
+        for glowLayer in [glowLayerA, glowLayerB] {
+            glowLayer.shadowColor = glowLayer.backgroundColor
+        }
     }
 
     override func layout() {
@@ -707,17 +898,21 @@ class GlassCardView: NSVisualEffectView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = 28
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.12).cgColor
-        layer?.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.08).cgColor
-        layer?.shadowColor = NSColor.black.withAlphaComponent(0.25).cgColor
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 18
-        layer?.shadowOffset = CGSize(width: 0, height: -4)
+        apply(theme: ThemeProfile.standard.palette)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func apply(theme: AppThemePalette) {
+        layer?.borderWidth = 1
+        layer?.borderColor = theme.cardBorderColor.cgColor
+        layer?.backgroundColor = theme.cardBackgroundColor.cgColor
+        layer?.shadowColor = theme.cardShadowColor.cgColor
+        layer?.shadowOpacity = 0.35
+        layer?.shadowRadius = 18
+        layer?.shadowOffset = CGSize(width: 0, height: -4)
     }
 }
 
@@ -754,6 +949,11 @@ final class MetricCardView: GlassCardView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func apply(theme: AppThemePalette) {
+        super.apply(theme: theme)
+        titleField.textColor = theme.mutedTextColor
     }
 
     func update(value: String, color: NSColor) {
@@ -1452,6 +1652,7 @@ enum DiagnosticsBuilder {
         lines.append("- serviceRunning: \(serviceRunning)")
         lines.append("- preventSleep: \(state.preventSleep)")
         lines.append("- sleepAssertionActive: \(sleepActive)")
+        lines.append("- themeProfile: \(ThemeProfile(rawValue: state.themeProfileRaw)?.title ?? ThemeProfile.standard.title)")
         lines.append("- acPowerOnlyModeEnabled: \(state.acPowerOnlyModeEnabled)")
         lines.append("- appScopedAwakeModeEnabled: \(state.appScopedAwakeModeEnabled)")
         lines.append("- appScopedAwakePolicy: \(AppScopedAwakePolicy(rawValue: state.appScopedAwakePolicyRaw)?.title ?? AppScopedAwakePolicy.anySelectedRunning.title)")
@@ -1525,6 +1726,140 @@ enum PowerProfile: String {
     case batteryPlus
     case offGrid
     case restoreConnectivity
+    case restoreDefaults
+
+    static let reviewOrder: [PowerProfile] = [
+        .diamond,
+        .powerPlus,
+        .batteryPlus,
+        .offGrid,
+        .restoreConnectivity,
+        .restoreDefaults
+    ]
+
+    var menuTitle: String {
+        switch self {
+        case .diamond:
+            return "Diamond - Maximum Performance"
+        case .powerPlus:
+            return "Power+ - Always-On Operations"
+        case .batteryPlus:
+            return "Battery+ - Energy Saver"
+        case .offGrid:
+            return "Off-Grid - Radios Disabled"
+        case .restoreConnectivity:
+            return "Restore Connectivity Only"
+        case .restoreDefaults:
+            return "Restore Standard Defaults (Undo Profile)"
+        }
+    }
+
+    var operatingIntent: String {
+        switch self {
+        case .diamond:
+            return "Designed for plugged-in, long-running workloads that need the Mac fully awake and fully networked."
+        case .powerPlus:
+            return "Designed for always-on service workloads that need uptime resilience and restart behavior after power events."
+        case .batteryPlus:
+            return "Designed to move the Mac into a more battery-conscious operating posture without changing wireless connectivity."
+        case .offGrid:
+            return "Designed to reduce background connectivity and wireless activity for isolated or low-power scenarios."
+        case .restoreConnectivity:
+            return "Re-enables networking-related power behavior without changing the rest of the current app operating state."
+        case .restoreDefaults:
+            return "Returns app-managed power controls to WayneTechLab's standard balanced baseline so users can undo a previously applied profile."
+        }
+    }
+
+    var exactChangeLines: [String] {
+        switch self {
+        case .diamond:
+            return [
+                "Launch at Boot: enabled",
+                "Background Service: started and marked enabled",
+                "Sleep Prevention: enabled",
+                "Auto-Reenable After Wake: enabled",
+                "Service Watchdog: enabled",
+                "Wi-Fi: enabled",
+                "Bluetooth: enabled",
+                "pmset (all power sources): sleep 0, displaysleep 0, disksleep 0, standby 0, autopoweroff 0, powernap 0, lowpowermode 0"
+            ]
+        case .powerPlus:
+            return [
+                "Launch at Boot: enabled",
+                "Background Service: started and marked enabled",
+                "Sleep Prevention: enabled",
+                "Auto-Reenable After Wake: enabled",
+                "Service Watchdog: enabled",
+                "Scheduled Shutdown Timer: cleared",
+                "pmset (all power sources): sleep 0, displaysleep 0, disksleep 0, standby 0, autopoweroff 0, powernap 0, lowpowermode 0",
+                "systemsetup: restart after power failure on, restart after freeze on"
+            ]
+        case .batteryPlus:
+            return [
+                "Sleep Prevention: disabled",
+                "Sleep Timer: cleared",
+                "Background Service: stopped and marked disabled",
+                "Auto-Reenable After Wake: disabled",
+                "Service Watchdog: disabled",
+                "Launch at Boot: unchanged",
+                "pmset (battery): sleep 10, displaysleep 3, disksleep 10, powernap 0, lowpowermode 1, standby 1, autopoweroff 1",
+                "pmset (charger): lowpowermode 0"
+            ]
+        case .offGrid:
+            return [
+                "Sleep Prevention: disabled",
+                "Sleep Timer: cleared",
+                "Background Service: stopped and marked disabled",
+                "Auto-Reenable After Wake: disabled",
+                "Service Watchdog: disabled",
+                "Launch at Boot: unchanged",
+                "Wi-Fi: disabled",
+                "Bluetooth: disabled",
+                "pmset (all power sources): womp 0, powernap 0, lowpowermode 1"
+            ]
+        case .restoreConnectivity:
+            return [
+                "Wi-Fi: enabled",
+                "Bluetooth: enabled",
+                "pmset (all power sources): womp 1, powernap 1",
+                "Launch at Boot / Service / Sleep Prevention: unchanged"
+            ]
+        case .restoreDefaults:
+            return [
+                "Launch at Boot: disabled",
+                "Background Service: stopped and marked disabled",
+                "Sleep Prevention: disabled",
+                "Sleep Timer: cleared",
+                "Auto-Reenable After Wake: disabled",
+                "Service Watchdog: disabled",
+                "Wi-Fi: enabled",
+                "Bluetooth: enabled",
+                "pmset (all power sources): sleep 10, displaysleep 10, disksleep 10, standby 1, autopoweroff 1, powernap 1, lowpowermode 0, womp 1",
+                "systemsetup: restart after power failure off, restart after freeze off"
+            ]
+        }
+    }
+
+    var note: String? {
+        switch self {
+        case .restoreDefaults:
+            return "Restore Standard Defaults applies the app's balanced baseline. It does not restore custom per-Mac pmset values that were set outside this app."
+        default:
+            return nil
+        }
+    }
+
+    var confirmationButtonTitle: String {
+        switch self {
+        case .restoreDefaults:
+            return "Restore Defaults"
+        case .restoreConnectivity:
+            return "Apply Connectivity Changes"
+        default:
+            return "Apply Profile"
+        }
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -1552,6 +1887,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var statusItem: NSStatusItem?
     private var desktopWindow: NSWindow?
+    private var desktopBackdropView: GradientBackdropView?
     private var desktopSummaryTextView: NSTextView?
     private var desktopEventLogTextView: NSTextView?
     private var desktopServiceButton: NSButton?
@@ -1564,6 +1900,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var desktopProtectionCard: MetricCardView?
     private var desktopVersionCard: MetricCardView?
     private var desktopUpdateCard: MetricCardView?
+    private var desktopPrimaryLabels: [NSTextField] = []
+    private var desktopSecondaryLabels: [NSTextField] = []
+    private var desktopMutedLabels: [NSTextField] = []
+    private var desktopSectionTitleLabels: [NSTextField] = []
+    private var desktopPrimaryActionButtons: [NSButton] = []
+    private var desktopSecondaryActionButtons: [NSButton] = []
+    private var desktopLinkButtons: [NSButton] = []
+    private var desktopGlassCards: [GlassCardView] = []
 
     private let titleItem = NSMenuItem(title: AppMeta.shortName, action: nil, keyEquivalent: "")
     private let openDesktopModeItem = NSMenuItem(title: "Open N.S.M. Desktop Experience", action: #selector(openDesktopExperience), keyEquivalent: "")
@@ -1660,6 +2004,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private let profileItem = NSMenuItem(title: "Power Profiles", action: nil, keyEquivalent: "")
     private let profileMenu = NSMenu(title: "Power Profiles")
+    private let profileStatusItem = NSMenuItem(title: "Review exact changes before applying a profile.", action: nil, keyEquivalent: "")
+    private let profileReviewItem = NSMenuItem(title: "Show What Power Profiles Change...", action: #selector(showPowerProfileGuide), keyEquivalent: "")
+    private let themeItem = NSMenuItem(title: "Appearance & Theme", action: nil, keyEquivalent: "")
+    private let themeMenu = NSMenu(title: "Appearance & Theme")
+    private let themeStatusItem = NSMenuItem(title: "Current Theme: Standard", action: nil, keyEquivalent: "")
+    private let themeNoteItem = NSMenuItem(title: "macOS keeps native menu materials; themes adjust accent styling and desktop colors.", action: nil, keyEquivalent: "")
+    private var themeOptionItems: [ThemeProfile: NSMenuItem] = [:]
 
     private let runSelfTestItem = NSMenuItem(title: "Run Self-Test", action: #selector(runSelfTest), keyEquivalent: "")
     private let copyStatusItem = NSMenuItem(title: "Copy Status", action: #selector(copyStatusToClipboard), keyEquivalent: "")
@@ -1672,6 +2023,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let sleepTimerOptions: [Int] = [30, 60, 120, 240]
     private let runtimeCapOptions: [Int] = [120, 240, 480]
     private let shutdownTimerOptions: [Int] = [15, 30, 60, 120]
+    private let themeProfileOptions: [ThemeProfile] = ThemeProfile.allCases
     private let appScopedPolicyOptions: [AppScopedAwakePolicy] = [.anySelectedRunning, .frontmostSelectedApp]
     private let quietHoursDayProfiles: [QuietHoursDayProfile] = [.everyDay, .weekdaysOnly, .weekendsOnly]
     private let thermalGuardThresholdOptions: [ThermalPressureLevel] = [.fair, .serious, .critical]
@@ -1749,6 +2101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buildQuietHoursMenu()
         buildThermalGuardMenu()
         buildRuntimeCapMenu()
+        buildThemeMenu()
 
         openDesktopModeItem.target = self
         checkUpdatesItem.target = self
@@ -1775,6 +2128,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runtimeCapSetUntilItem.target = self
         launchAtBootItem.target = self
         restartServiceItem.target = self
+        profileReviewItem.target = self
+        themeStatusItem.target = nil
+        themeNoteItem.target = nil
         runSelfTestItem.target = self
         copyStatusItem.target = self
         exportDiagnosticsItem.target = self
@@ -1821,6 +2177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(sleepTimerItem)
         menu.addItem(scheduledActionsItem)
         menu.addItem(profileItem)
+        menu.addItem(themeItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(launchAtBootItem)
         menu.addItem(restartServiceItem)
@@ -1839,6 +2196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         statusItem.menu = menu
         self.statusItem = statusItem
+        applyThemeToMenus()
     }
 
     private func buildWarningMenu() {
@@ -2070,35 +2428,181 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildProfileMenu() {
         profileMenu.removeAllItems()
-
-        let diamond = NSMenuItem(title: "Diamond - Full Power (GOD-MODE)", action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
-        diamond.target = self
-        diamond.representedObject = PowerProfile.diamond.rawValue
-
-        let powerPlus = NSMenuItem(title: "Power + (Server / Always-On)", action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
-        powerPlus.target = self
-        powerPlus.representedObject = PowerProfile.powerPlus.rawValue
-
-        let batteryPlus = NSMenuItem(title: "Battery + (Efficiency)", action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
-        batteryPlus.target = self
-        batteryPlus.representedObject = PowerProfile.batteryPlus.rawValue
-
-        let offGrid = NSMenuItem(title: "Off-Grid Mode (Wireless Off)", action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
-        offGrid.target = self
-        offGrid.representedObject = PowerProfile.offGrid.rawValue
-
-        let restore = NSMenuItem(title: "Restore Connectivity", action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
-        restore.target = self
-        restore.representedObject = PowerProfile.restoreConnectivity.rawValue
-
-        profileMenu.addItem(diamond)
-        profileMenu.addItem(powerPlus)
-        profileMenu.addItem(batteryPlus)
-        profileMenu.addItem(offGrid)
+        profileStatusItem.isEnabled = false
+        profileMenu.addItem(profileStatusItem)
         profileMenu.addItem(NSMenuItem.separator())
-        profileMenu.addItem(restore)
+        profileMenu.addItem(profileReviewItem)
+        profileMenu.addItem(NSMenuItem.separator())
+
+        for profile in [PowerProfile.diamond, .powerPlus, .batteryPlus, .offGrid] {
+            let item = NSMenuItem(title: profile.menuTitle, action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = profile.rawValue
+            profileMenu.addItem(item)
+        }
+
+        profileMenu.addItem(NSMenuItem.separator())
+
+        for profile in [PowerProfile.restoreConnectivity, .restoreDefaults] {
+            let item = NSMenuItem(title: profile.menuTitle, action: #selector(applyPowerProfileMenuAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = profile.rawValue
+            profileMenu.addItem(item)
+        }
 
         profileItem.submenu = profileMenu
+    }
+
+    private func buildThemeMenu() {
+        themeMenu.removeAllItems()
+        themeOptionItems.removeAll()
+
+        themeStatusItem.isEnabled = false
+        themeNoteItem.isEnabled = false
+
+        themeMenu.addItem(themeStatusItem)
+        themeMenu.addItem(NSMenuItem.separator())
+
+        for profile in themeProfileOptions {
+            let item = NSMenuItem(title: profile.title, action: #selector(selectThemeProfile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: profile.rawValue)
+            themeMenu.addItem(item)
+            themeOptionItems[profile] = item
+        }
+
+        themeMenu.addItem(NSMenuItem.separator())
+        themeMenu.addItem(themeNoteItem)
+        themeItem.submenu = themeMenu
+    }
+
+    private func currentThemeProfile() -> ThemeProfile {
+        ThemeProfile(rawValue: state.themeProfileRaw) ?? .standard
+    }
+
+    private func currentThemePalette() -> AppThemePalette {
+        currentThemeProfile().palette
+    }
+
+    private func resolvedAppearance(named name: NSAppearance.Name?) -> NSAppearance? {
+        guard let name else {
+            return nil
+        }
+        return NSAppearance(named: name)
+    }
+
+    private func updateThemeMenuState() {
+        let profile = currentThemeProfile()
+        themeItem.title = "Appearance & Theme"
+        themeStatusItem.title = "Current Theme: \(profile.title)"
+
+        for (candidate, item) in themeOptionItems {
+            item.state = candidate == profile ? .on : .off
+        }
+    }
+
+    private func themedMenuAttributes(for item: NSMenuItem, depth: Int, palette: AppThemePalette) -> [NSAttributedString.Key: Any] {
+        let color: NSColor
+        let font: NSFont
+
+        if item === titleItem {
+            color = palette.menuAccentColor
+            font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        } else if !item.isEnabled {
+            color = palette.menuSecondaryTextColor
+            font = NSFont.menuFont(ofSize: 14)
+        } else if item.state == .on || depth == 0 {
+            color = palette.menuAccentColor
+            font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        } else {
+            color = palette.menuPrimaryTextColor
+            font = NSFont.menuFont(ofSize: 14)
+        }
+
+        return [
+            .foregroundColor: color,
+            .font: font
+        ]
+    }
+
+    private func applyTheme(to menu: NSMenu, depth: Int, profile: ThemeProfile, palette: AppThemePalette) {
+        menu.appearance = resolvedAppearance(named: palette.menuAppearanceName)
+
+        for item in menu.items {
+            guard !item.isSeparatorItem else {
+                continue
+            }
+
+            if profile == .standard {
+                item.attributedTitle = nil
+            } else {
+                item.attributedTitle = NSAttributedString(
+                    string: item.title,
+                    attributes: themedMenuAttributes(for: item, depth: depth, palette: palette)
+                )
+            }
+
+            if let submenu = item.submenu {
+                applyTheme(to: submenu, depth: depth + 1, profile: profile, palette: palette)
+            }
+        }
+    }
+
+    private func applyThemeToMenus() {
+        guard let menu = statusItem?.menu else {
+            return
+        }
+
+        let profile = currentThemeProfile()
+        let palette = currentThemePalette()
+        applyTheme(to: menu, depth: 0, profile: profile, palette: palette)
+    }
+
+    private func applyTheme(to button: NSButton, primary: Bool, palette: AppThemePalette) {
+        button.contentTintColor = primary ? palette.buttonTextColor : palette.secondaryButtonTextColor
+        button.bezelColor = primary ? palette.buttonColor : palette.secondaryButtonColor
+    }
+
+    private func applyThemeToDesktopWindow() {
+        let palette = currentThemePalette()
+
+        desktopWindow?.appearance = resolvedAppearance(named: palette.windowAppearanceName)
+        desktopBackdropView?.apply(theme: palette)
+
+        for card in desktopGlassCards {
+            card.apply(theme: palette)
+        }
+
+        for label in desktopPrimaryLabels {
+            label.textColor = palette.primaryTextColor
+        }
+
+        for label in desktopSecondaryLabels {
+            label.textColor = palette.secondaryTextColor
+        }
+
+        for label in desktopMutedLabels {
+            label.textColor = palette.mutedTextColor
+        }
+
+        for label in desktopSectionTitleLabels {
+            label.textColor = palette.primaryTextColor
+        }
+
+        for button in desktopPrimaryActionButtons {
+            applyTheme(to: button, primary: true, palette: palette)
+        }
+
+        for button in desktopSecondaryActionButtons {
+            applyTheme(to: button, primary: false, palette: palette)
+        }
+
+        for button in desktopLinkButtons {
+            button.contentTintColor = palette.linkColor
+        }
+
+        desktopSummaryTextView?.textColor = palette.primaryTextColor.withAlphaComponent(0.90)
+        desktopEventLogTextView?.textColor = palette.primaryTextColor.withAlphaComponent(0.90)
     }
 
     private func makeDesktopActionButton(title: String, action: Selector) -> NSButton {
@@ -2137,7 +2641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return textView
     }
 
-    private func wrapScrollContent(title: String, textView: NSTextView, minHeight: CGFloat) -> GlassCardView {
+    private func wrapScrollContent(title: String, textView: NSTextView, minHeight: CGFloat) -> (card: GlassCardView, titleField: NSTextField) {
         let card = GlassCardView()
 
         let titleField = NSTextField(labelWithString: title)
@@ -2167,7 +2671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight)
         ])
 
-        return card
+        return (card, titleField)
     }
 
     private func ensureDesktopWindow() -> NSWindow {
@@ -2244,7 +2748,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             desktopServiceButton,
             desktopSleepButton,
             desktopUpdateButton,
-            desktopUpdateButton,
             desktopACPowerOnlyButton,
             desktopAppScopedButton,
             desktopThermalGuardButton,
@@ -2277,10 +2780,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let summaryTextView = makeDesktopTextView(initialText: "Preparing control-plane summary...")
         let eventLogTextView = makeDesktopTextView(initialText: "Waiting for event history...")
 
-        let summaryCard = wrapScrollContent(title: "Control Plane + Telemetry", textView: summaryTextView, minHeight: 220)
-        let eventLogCard = wrapScrollContent(title: "Event History", textView: eventLogTextView, minHeight: 280)
+        let summaryCardComponents = wrapScrollContent(title: "Control Plane + Telemetry", textView: summaryTextView, minHeight: 220)
+        let eventLogCardComponents = wrapScrollContent(title: "Event History", textView: eventLogTextView, minHeight: 280)
 
-        let contentStack = NSStackView(views: [summaryCard, eventLogCard])
+        let contentStack = NSStackView(views: [summaryCardComponents.card, eventLogCardComponents.card])
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
         contentStack.spacing = 14
@@ -2313,6 +2816,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         self.desktopWindow = window
+        self.desktopBackdropView = backdropView
         self.desktopSummaryTextView = summaryTextView
         self.desktopEventLogTextView = eventLogTextView
         self.desktopServiceButton = desktopServiceButton
@@ -2325,6 +2829,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.desktopProtectionCard = desktopProtectionCard
         self.desktopVersionCard = desktopVersionCard
         self.desktopUpdateCard = desktopUpdateCard
+        self.desktopPrimaryLabels = [titleLabel]
+        self.desktopSecondaryLabels = [subtitleLabel]
+        self.desktopMutedLabels = [eyebrowLabel]
+        self.desktopSectionTitleLabels = [summaryCardComponents.titleField, eventLogCardComponents.titleField]
+        self.desktopPrimaryActionButtons = [
+            desktopServiceButton,
+            desktopSleepButton,
+            desktopUpdateButton,
+            desktopACPowerOnlyButton,
+            desktopAppScopedButton,
+            desktopThermalGuardButton,
+            openEventLogButton,
+            openServiceLogButton,
+            exportDiagnosticsButton
+        ]
+        self.desktopSecondaryActionButtons = [closeDesktopButton]
+        self.desktopLinkButtons = [providerButton, wikiButton]
+        self.desktopGlassCards = [
+            shellCard,
+            desktopServiceCard,
+            desktopProtectionCard,
+            desktopVersionCard,
+            desktopUpdateCard,
+            summaryCardComponents.card,
+            eventLogCardComponents.card
+        ]
+
+        applyThemeToDesktopWindow()
 
         return window
     }
@@ -2459,6 +2991,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.addButton(withTitle: "OK")
         NSApplication.shared.activate(ignoringOtherApps: true)
         _ = alert.runModal()
+    }
+
+    private func makeAlertTextAccessory(text: String, width: CGFloat = 560, height: CGFloat = 300) -> NSScrollView {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textContainerInset = NSSize(width: 10, height: 10)
+        textView.string = text
+
+        if let textContainer = textView.textContainer {
+            textContainer.widthTracksTextView = true
+            textContainer.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        }
+
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.drawsBackground = false
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    private func powerProfileDetailText(for profile: PowerProfile) -> String {
+        var lines: [String] = []
+        lines.append("Operating Intent")
+        lines.append(profile.operatingIntent)
+        lines.append("")
+        lines.append("Exact Changes")
+        lines.append(contentsOf: profile.exactChangeLines.map { "- \($0)" })
+
+        if let note = profile.note {
+            lines.append("")
+            lines.append("Note")
+            lines.append(note)
+        }
+
+        lines.append("")
+        lines.append("Administrative changes may prompt for authentication when macOS requires elevated access.")
+        return lines.joined(separator: "\n")
+    }
+
+    private func powerProfileGuideText() -> String {
+        var lines: [String] = [
+            "Power profiles can change app behavior, networking state, and privileged macOS power-management settings.",
+            "Review the exact changes below before applying a profile.",
+            ""
+        ]
+
+        for profile in PowerProfile.reviewOrder {
+            lines.append(profile.menuTitle)
+            lines.append(profile.operatingIntent)
+            lines.append(contentsOf: profile.exactChangeLines.map { "- \($0)" })
+            if let note = profile.note {
+                lines.append("Note: \(note)")
+            }
+            lines.append("")
+        }
+
+        lines.append("Administrative changes may prompt for authentication when macOS requires elevated access.")
+        return lines.joined(separator: "\n")
+    }
+
+    private func confirmPowerProfileApplication(_ profile: PowerProfile) -> Bool {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = profile.menuTitle
+        alert.informativeText = "Review the exact changes below before applying this profile."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: profile.confirmationButtonTitle)
+        alert.addButton(withTitle: "Cancel")
+        alert.accessoryView = makeAlertTextAccessory(text: powerProfileDetailText(for: profile), height: 280)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    @objc private func showPowerProfileGuide() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Power Profile Change Review"
+        alert.informativeText = "Use this review before applying a profile or restoring defaults."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.accessoryView = makeAlertTextAccessory(text: powerProfileGuideText(), height: 360)
+        _ = alert.runModal()
+
+        EventLog.shared.add("Power profile change review opened.")
     }
 
     private func showUpdateAvailableAlert(_ info: UpdateInfo) {
@@ -3280,11 +3901,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateQuietHoursMenuState()
         updateThermalGuardMenuState(snapshot)
         updateRuntimeCapMenuState()
+        updateThemeMenuState()
         refreshDesktopWindowState(resourceSnapshot: snapshot)
         updateSleepTimerMenuState()
         updateShutdownTimerMenuState()
         updateScheduleInfoItems()
         rebuildRecentEventsMenu()
+        applyThemeToMenus()
+        applyThemeToDesktopWindow()
     }
 
     private func updateResourceItems(_ snap: ResourceSnapshot) {
@@ -3964,8 +4588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .diamond:
             state.autoReenableAfterWake = true
             state.serviceWatchdogEnabled = true
-            state.launchAtBoot = true
             _ = launchAtBootManager.setEnabled(true)
+            state.launchAtBoot = launchAtBootManager.isEnabled()
 
             _ = serviceController.start()
             _ = ensureProtectionEnabled()
@@ -3981,13 +4605,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             _ = resourceMonitor.setWiFiEnabled(true)
             _ = resourceMonitor.setBluetoothEnabled(true)
 
-            EventLog.shared.add("Power profile applied: Diamond - Full Power (GOD-MODE).")
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
 
         case .powerPlus:
             state.autoReenableAfterWake = true
             state.serviceWatchdogEnabled = true
-            state.launchAtBoot = true
             _ = launchAtBootManager.setEnabled(true)
+            state.launchAtBoot = launchAtBootManager.isEnabled()
 
             _ = serviceController.start()
             _ = ensureProtectionEnabled()
@@ -4007,7 +4631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
 
             clearShutdownTimer(logChange: false)
-            EventLog.shared.add("Power profile applied: Power+ (Server / Always-On).")
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
 
         case .batteryPlus:
             blocker.deactivate()
@@ -4026,7 +4650,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 failureLabel: "Battery+ pmset failed"
             )
 
-            EventLog.shared.add("Power profile applied: Battery+ (Efficiency).")
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
 
         case .offGrid:
             blocker.deactivate()
@@ -4037,6 +4661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             state.serviceEnabled = false
             serviceController.stop()
             state.autoReenableAfterWake = false
+            state.serviceWatchdogEnabled = false
 
             _ = resourceMonitor.setWiFiEnabled(false)
             _ = resourceMonitor.setBluetoothEnabled(false)
@@ -4047,7 +4672,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 failureLabel: "Off-Grid pmset failed"
             )
 
-            EventLog.shared.add("Power profile applied: Off-Grid Mode (wireless off).")
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
 
         case .restoreConnectivity:
             _ = resourceMonitor.setWiFiEnabled(true)
@@ -4059,7 +4684,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 failureLabel: "Restore connectivity pmset failed"
             )
 
-            EventLog.shared.add("Power profile applied: Restore Connectivity.")
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
+
+        case .restoreDefaults:
+            blocker.deactivate()
+            state.preventSleep = false
+            clearSleepTimer(logChange: false)
+            handleProtectionDisabledForRuntimeCap()
+
+            state.autoReenableAfterWake = false
+            state.serviceWatchdogEnabled = false
+            state.serviceEnabled = false
+            serviceController.stop()
+
+            _ = launchAtBootManager.setEnabled(false)
+            state.launchAtBoot = launchAtBootManager.isEnabled()
+
+            _ = resourceMonitor.setWiFiEnabled(true)
+            _ = resourceMonitor.setBluetoothEnabled(true)
+
+            _ = runPrivilegedPowerCommand(
+                "/usr/bin/pmset -a sleep 10 displaysleep 10 disksleep 10 standby 1 autopoweroff 1 powernap 1 lowpowermode 0 womp 1",
+                successMessage: "Restore defaults profile: balanced pmset settings applied.",
+                failureLabel: "Restore defaults pmset failed"
+            )
+
+            _ = runPrivilegedPowerCommand(
+                "/usr/sbin/systemsetup -setrestartpowerfailure off; /usr/sbin/systemsetup -setrestartfreeze off",
+                successMessage: "Restore defaults profile: automatic restart settings returned to standard defaults.",
+                failureLabel: "Restore defaults systemsetup failed"
+            )
+
+            EventLog.shared.add("Power profile applied: \(profile.menuTitle).")
         }
 
         stateStore.save(state)
@@ -4119,6 +4775,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func openWiki() {
         NSWorkspace.shared.open(AppMeta.wikiURL)
+    }
+
+    @objc private func selectThemeProfile(_ sender: NSMenuItem) {
+        guard let wrapped = sender.representedObject as? NSNumber,
+              let profile = ThemeProfile(rawValue: wrapped.intValue) else {
+            return
+        }
+
+        state.themeProfileRaw = profile.rawValue
+        stateStore.save(state)
+        EventLog.shared.add("Appearance theme changed to \(profile.title).")
+        refreshMenuState()
     }
 
     @objc private func desktopToggleACPowerOnlyMode() {
@@ -4571,6 +5239,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
+        guard confirmPowerProfileApplication(profile) else {
+            EventLog.shared.add("Power profile application canceled: \(profile.menuTitle).")
+            return
+        }
+
         applyPowerProfile(profile)
     }
 
@@ -4601,6 +5274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         checks.append("Launch at boot effective: \(launchAtBootManager.isEnabled())")
         checks.append("Service running: \(serviceController.isRunning)")
         checks.append("Sleep prevention active: \(blocker.isActive)")
+        checks.append("Theme: \(currentThemeProfile().title)")
         checks.append("AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? "Enabled" : "Disabled")")
         checks.append("Power source: \(resourceMonitor.powerSourceKind().title)")
         checks.append("App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "Enabled" : "Disabled")")
@@ -4632,6 +5306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "Provided BY: \(AppMeta.providerName)",
             "Service running: \(serviceController.isRunning)",
             "Sleep prevention active: \(blocker.isActive)",
+            "Theme: \(currentThemeProfile().title)",
             "AC Power Only Mode: \(state.acPowerOnlyModeEnabled ? "enabled" : "disabled")",
             "Power Source: \(resourceMonitor.powerSourceKind().title)",
             "App-Scoped Awake Mode: \(state.appScopedAwakeModeEnabled ? "enabled" : "disabled")",
@@ -4804,6 +5479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         desktopWindow = nil
+        desktopBackdropView = nil
         desktopSummaryTextView = nil
         desktopEventLogTextView = nil
         desktopServiceButton = nil
@@ -4816,6 +5492,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         desktopProtectionCard = nil
         desktopVersionCard = nil
         desktopUpdateCard = nil
+        desktopPrimaryLabels = []
+        desktopSecondaryLabels = []
+        desktopMutedLabels = []
+        desktopSectionTitleLabels = []
+        desktopPrimaryActionButtons = []
+        desktopSecondaryActionButtons = []
+        desktopLinkButtons = []
+        desktopGlassCards = []
 
         if !isTerminating {
             _ = NSApplication.shared.setActivationPolicy(.accessory)
